@@ -55,14 +55,14 @@ var _ = Describe("Control Message Handlers", func() {
 			Expect(pkg.Payload).To(Equal([]byte(`{"foo": "bar"}`)))
 		})
 	})
-	var devMsgHandler *devices.DeviceMessageHandler
+	var devMsgHandler *devices.MessageHandler
 	var server net.Conn
 	var client net.Conn
 	var response packets.ControlPacket
 
 	BeforeEach(func() {
 		devs = devices.NewDeviceMap()
-		devMsgHandler = devices.NewDeviceMessageHandler(devs)
+		devMsgHandler = devices.NewMessageHandler(devs)
 
 		server, client = net.Pipe()
 		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)

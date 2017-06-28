@@ -13,14 +13,14 @@ import (
 var _ = Describe("Device Message Handlers", func() {
 
 	var devs *devices.DeviceMap
-	var devMsgHandler *devices.DeviceMessageHandler
+	var devMsgHandler *devices.MessageHandler
 	var server net.Conn
 	var client net.Conn
 	var response packets.ControlPacket
 
 	BeforeEach(func() {
 		devs = devices.NewDeviceMap()
-		devMsgHandler = devices.NewDeviceMessageHandler(devs)
+		devMsgHandler = devices.NewMessageHandler(devs)
 		server, client = net.Pipe()
 
 		go func() {
