@@ -6,7 +6,6 @@ import (
 
 	"github.com/caarlos0/env"
 	"github.com/superscale/spire/service"
-	"github.com/superscale/spire/handlers"
 	"github.com/superscale/spire/devices"
 	"github.com/superscale/spire/control"
 )
@@ -17,13 +16,13 @@ func main() {
 		panic(err)
 	}
 
-	devices := devices.NewDeviceMap()
-	devMsgHandler := handlers.NewDeviceMessageHandler(devices)
+	devs := devices.NewDeviceMap()
+	devMsgHandler := devices.NewMessageHandler(devs)
 
 	devicesServer := service.NewServer(service.Config.DevicesBind, devMsgHandler.HandleConnection)
 	devicesServer.Run()
 
-	ctrlMsgHandler := control.NewMessageHandler(devices)
+	ctrlMsgHandler := control.NewMessageHandler(devs)
 	controlServer := service.NewServer(service.Config.ServicesBind, ctrlMsgHandler.HandleConnection)
 	controlServer.Run()
 
