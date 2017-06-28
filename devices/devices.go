@@ -6,14 +6,15 @@ import (
 	"sync"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"fmt"
 )
 
+// Device ...
 type Device struct {
 	name string
 	conn net.Conn
 }
 
+// NewDevice ...
 func NewDevice(name string, conn net.Conn) *Device {
 	return &Device{
 		name: name,
@@ -21,6 +22,7 @@ func NewDevice(name string, conn net.Conn) *Device {
 	}
 }
 
+// Send ...
 func (d *Device) Send(topic string, payload []byte) error {
 	pkg := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)
 	pkg.Qos = 1
@@ -29,24 +31,27 @@ func (d *Device) Send(topic string, payload []byte) error {
 	return pkg.Write(d.conn)
 }
 
+// ErrDevNotFound ...
 var ErrDevNotFound = errors.New("device not found")
 
+// DeviceMap ...
 type DeviceMap struct {
 	l sync.RWMutex
 	m map[string]*Device
 }
 
+// NewDeviceMap ...
 func NewDeviceMap() *DeviceMap {
 	return &DeviceMap{
 		m: make(map[string]*Device),
 	}
 }
 
+// Get ...
 func (d *DeviceMap) Get(name string) (*Device, error) {
 	d.l.RLock()
 	defer d.l.RUnlock()
-	fmt.Println("GET")
-	fmt.Println(d.m)
+
 	dev, exists := d.m[name]
 	if !exists {
 		return nil, ErrDevNotFound
@@ -54,10 +59,11 @@ func (d *DeviceMap) Get(name string) (*Device, error) {
 	return dev, nil
 }
 
+// Add ...
 func (d *DeviceMap) Add(name string, conn net.Conn) {
 	d.l.Lock()
 	defer d.l.Unlock()
-	fmt.Println("ADD")
+
 	dev, exists := d.m[name]
 	if exists {
 		if dev.conn == conn {
@@ -69,6 +75,7 @@ func (d *DeviceMap) Add(name string, conn net.Conn) {
 	d.m[name] = NewDevice(name, conn)
 }
 
+// Remove ...
 func (d *DeviceMap) Remove(name string) {
 	d.l.Lock()
 	defer d.l.Unlock()
@@ -82,6 +89,7 @@ func (d *DeviceMap) Remove(name string) {
 	delete(d.m, name)
 }
 
+// Send ...
 func (d *DeviceMap) Send(name, topic string, payload []byte) error {
 	d.l.RLock()
 	defer d.l.RUnlock()
@@ -94,6 +102,7 @@ func (d *DeviceMap) Send(name, topic string, payload []byte) error {
 	return dev.Send(topic, payload)
 }
 
+// Broadcast ...
 func (d *DeviceMap) Broadcast(topic string, payload []byte) error {
 	d.l.RLock()
 	defer d.l.RUnlock()

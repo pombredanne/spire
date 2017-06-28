@@ -8,12 +8,15 @@ import (
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	"github.com/superscale/spire/devices"
+	"io"
 )
 
+// DeviceMessageHandler ...
 type DeviceMessageHandler struct {
 	devices *devices.DeviceMap
 }
 
+// NewDeviceMessageHandler ...
 func NewDeviceMessageHandler(devices *devices.DeviceMap) *DeviceMessageHandler {
 	return &DeviceMessageHandler{
 		devices: devices,
@@ -36,31 +39,37 @@ func (h *DeviceMessageHandler) HandleConnection(conn net.Conn) {
 		return
 	}
 
+	deviceName := msg.ClientIdentifier
+	h.devices.Add(deviceName, conn)
+
 	cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
 	if err := cAck.Write(conn); err != nil {
 		log.Println(err)
 		conn.Close()
+		h.devices.Remove(deviceName)
 		return
 	}
-	deviceName := msg.ClientIdentifier
-	h.devices.Add(deviceName, conn)
 
 	for {
 		ca, err := packets.ReadPacket(conn)
 		if err != nil {
-			log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
+			if err != io.EOF {
+				log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
+			}
 			if err := conn.Close(); err != nil {
 				log.Println(err)
 			}
+
+			h.devices.Remove(deviceName)
 			return
 		}
 
 		switch ca := ca.(type) {
 		case *packets.DisconnectPacket:
-			log.Println(deviceName, "signing off. closing connection")
 			if err := conn.Close(); err != nil {
 				log.Println(err)
 			}
+			h.devices.Remove(deviceName)
 			return
 		case *packets.PublishPacket:
 			if err := dispatch(deviceName, ca, h.devices); err != nil {
@@ -78,7 +87,7 @@ func (h *DeviceMessageHandler) HandleConnection(conn net.Conn) {
 
 func dispatch(deviceName string, msg *packets.PublishPacket, devs *devices.DeviceMap) error {
 	parts := strings.Split(msg.TopicName, "/")
-	if parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName || len(parts) < 4 {
+	if len(parts) < 4 || parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName {
 		return fmt.Errorf("invalid message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
 	}
 
@@ -88,6 +97,4 @@ func dispatch(deviceName string, msg *packets.PublishPacket, devs *devices.Devic
 	default:
 		return fmt.Errorf("unsupported message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
 	}
-
-	return nil
 }
