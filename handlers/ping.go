@@ -1,8 +1,12 @@
 package handlers
 
-import "log"
+import (
+	"log"
+	"github.com/superscale/spire/devices"
+)
 
-func HandlePing(deviceName, topic string, payload []byte) error {
+// HandlePing ...
+func HandlePing(deviceName, topic string, payload []byte, devices *devices.DeviceMap) error {
 	log.Println("It's a ping!")
 	return nil
 }

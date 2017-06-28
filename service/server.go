@@ -3,107 +3,66 @@ package service
 import (
 	"log"
 	"net"
-
-	"fmt"
-	"github.com/eclipse/paho.mqtt.golang/packets"
-	"github.com/superscale/spire/handlers"
-	"strings"
 )
+
+// ConnectionHandler will be run in a goroutine for each connection the server accepts
+type ConnectionHandler func(net.Conn)
 
 // Server ...
 type Server struct {
-	listener net.Listener
+	bind        string
+	listener    net.Listener
+	quit        chan bool
+	connHandler ConnectionHandler
+}
+
+// NewServer instantiates a new server that listens on the address passed in "bind"
+func NewServer(bind string, connHandler ConnectionHandler) *Server {
+	if connHandler == nil {
+		return nil
+	}
+
+	return &Server{
+		bind:        bind,
+		connHandler: connHandler,
+		quit:        make(chan bool),
+	}
+}
+
+// Shutdown stops the server from listening
+func (s *Server) Shutdown() {
+	if s.listener == nil {
+		return
+	}
+	s.quit <- true
+	s.listener.Close()
 }
 
 // Run ...
-func (s *Server) Run() (err error) {
-	if s.listener, err = net.Listen("tcp", Config.Bind); err != nil {
-		return
-	}
-
-	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
+func (s *Server) Run() {
+	go func() {
+		var err error
+		if s.listener, err = net.Listen("tcp", s.bind); err != nil {
 			log.Println(err)
-		} else {
-			go handleConnection(conn)
-		}
-	}
-}
-
-func handleConnection(conn net.Conn) {
-	ca, err := packets.ReadPacket(conn)
-	if err != nil {
-		log.Println("error while reading packet:", err, "closing connection")
-		conn.Close()
-		return
-	}
-
-	msg, ok := ca.(*packets.ConnectPacket)
-	if !ok {
-		log.Println("expected a CONNECT message, got some other garbage instead. closing connection")
-		conn.Close()
-		return
-	}
-
-	cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
-	if err := cAck.Write(conn); err != nil {
-		log.Println(err)
-		conn.Close()
-		return
-	}
-
-	handleMessages(conn, msg.ClientIdentifier)
-}
-
-func handleMessages(conn net.Conn, deviceName string) {
-	for {
-		ca, err := packets.ReadPacket(conn)
-		if err != nil {
-			log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
-			if err := conn.Close(); err != nil {
-				log.Println(err)
-			}
 			return
 		}
 
-		switch ca := ca.(type) {
-		case *packets.DisconnectPacket:
-			log.Println(deviceName, "signing off. closing connection")
-			if err := conn.Close(); err != nil {
+		for {
+			conn, err := s.listener.Accept()
+
+			if err != nil {
+				select {
+				case <-s.quit:
+					return
+				default:
+				}
+
 				log.Println(err)
+				return
+
+			} else {
+				go s.connHandler(conn)
 			}
-			return
-		case *packets.PublishPacket:
-			if err := dispatch(conn, deviceName, ca); err != nil {
-				log.Println(err)
-			}
-		default:
-			log.Println("ignoring unsupported message from", deviceName)
 		}
-	}
-}
-
-func dispatch(conn net.Conn, deviceName string, msg *packets.PublishPacket) error {
-	if msg.Qos != 1 {
-		return fmt.Errorf("received publish message with unsupported QoS %d from %s", msg.Qos, deviceName)
-	}
-
-	parts := strings.Split(msg.TopicName, "/")
-	if parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName || len(parts) < 4 {
-		return fmt.Errorf("invalid message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
-
-	}
-
-	switch parts[3] {
-	case "ping":
-		handlers.HandlePing(deviceName, msg.TopicName, msg.Payload)
-	default:
-		return fmt.Errorf("unsupported message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
-	}
-
-	pAck := packets.NewControlPacket(packets.Puback).(*packets.PubackPacket)
-	pAck.MessageID = msg.MessageID
-	pAck.Write(conn)
-	return nil
+	}()
 }
