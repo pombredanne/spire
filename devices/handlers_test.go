@@ -1,4 +1,4 @@
-package handlers_test
+package devices_test
 
 import (
 	"net"
@@ -8,20 +8,19 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/devices"
-	"github.com/superscale/spire/handlers"
 )
 
 var _ = Describe("Device Message Handlers", func() {
 
 	var devs *devices.DeviceMap
-	var devMsgHandler *handlers.DeviceMessageHandler
+	var devMsgHandler *devices.DeviceMessageHandler
 	var server net.Conn
 	var client net.Conn
 	var response packets.ControlPacket
 
 	BeforeEach(func() {
 		devs = devices.NewDeviceMap()
-		devMsgHandler = handlers.NewDeviceMessageHandler(devs)
+		devMsgHandler = devices.NewDeviceMessageHandler(devs)
 		server, client = net.Pipe()
 
 		go func() {

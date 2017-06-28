@@ -8,7 +8,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/control"
 	"github.com/superscale/spire/devices"
-	"github.com/superscale/spire/handlers"
 )
 
 var _ = Describe("Control Message Handlers", func() {
@@ -56,14 +55,14 @@ var _ = Describe("Control Message Handlers", func() {
 			Expect(pkg.Payload).To(Equal([]byte(`{"foo": "bar"}`)))
 		})
 	})
-	var devMsgHandler *handlers.DeviceMessageHandler
+	var devMsgHandler *devices.DeviceMessageHandler
 	var server net.Conn
 	var client net.Conn
 	var response packets.ControlPacket
 
 	BeforeEach(func() {
 		devs = devices.NewDeviceMap()
-		devMsgHandler = handlers.NewDeviceMessageHandler(devs)
+		devMsgHandler = devices.NewDeviceMessageHandler(devs)
 
 		server, client = net.Pipe()
 		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)

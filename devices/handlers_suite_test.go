@@ -1,4 +1,4 @@
-package handlers_test
+package devices_test
 
 import (
 	"testing"

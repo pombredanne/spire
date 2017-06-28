@@ -1,23 +1,22 @@
-package handlers
+package devices
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strings"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"github.com/superscale/spire/devices"
-	"io"
 )
 
 // DeviceMessageHandler ...
 type DeviceMessageHandler struct {
-	devices *devices.DeviceMap
+	devices *DeviceMap
 }
 
 // NewDeviceMessageHandler ...
-func NewDeviceMessageHandler(devices *devices.DeviceMap) *DeviceMessageHandler {
+func NewDeviceMessageHandler(devices *DeviceMap) *DeviceMessageHandler {
 	return &DeviceMessageHandler{
 		devices: devices,
 	}
@@ -85,7 +84,7 @@ func (h *DeviceMessageHandler) HandleConnection(conn net.Conn) {
 	}
 }
 
-func dispatch(deviceName string, msg *packets.PublishPacket, devs *devices.DeviceMap) error {
+func dispatch(deviceName string, msg *packets.PublishPacket, devs *DeviceMap) error {
 	parts := strings.Split(msg.TopicName, "/")
 	if len(parts) < 4 || parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName {
 		return fmt.Errorf("invalid message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
