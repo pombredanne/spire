@@ -22,12 +22,11 @@ var _ = Describe("Device Message Handlers", func() {
 	BeforeEach(func() {
 		devs = devices.NewDeviceMap()
 		devMsgHandler = handlers.NewDeviceMessageHandler(devs)
-
 		server, client = net.Pipe()
-		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-		connPkg.ClientIdentifier = "1.marsara"
 
 		go func() {
+			connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+			connPkg.ClientIdentifier = "1.marsara"
 			Expect(connPkg.Write(client)).NotTo(HaveOccurred())
 		}()
 

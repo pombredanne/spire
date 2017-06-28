@@ -23,7 +23,7 @@ func main() {
 	devicesServer := service.NewServer(service.Config.DevicesBind, devMsgHandler.HandleConnection)
 	devicesServer.Run()
 
-	ctrlMsgHandler := control.NewControlMessageHandler(devices)
+	ctrlMsgHandler := control.NewMessageHandler(devices)
 	controlServer := service.NewServer(service.Config.ServicesBind, ctrlMsgHandler.HandleConnection)
 	controlServer.Run()
 
