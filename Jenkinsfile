@@ -10,7 +10,6 @@ node  {
             userRemoteConfigs: scm.userRemoteConfigs,
             extensions: scm.extensions + [[$class: 'SubmoduleOption', disableSubmodules: false, parentCredentials: true, recursiveSubmodules: true, reference: '', trackingSubmodules: false]]
         ])
-        vers = sh(returnStdout: true, script: 'git describe --tags').trim()
     }
     stage("Build docker") {
         image = docker.build("superscale/${service}")
