@@ -8,16 +8,14 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"gopkg.in/redis.v5"
-	"time"
 )
 
 // MessageHandler ...
 type MessageHandler struct {
 	devices *DeviceMap
-	redis   redis.Cmdable
 }
 
 // NewMessageHandler ...
@@ -163,16 +161,16 @@ func (s *DeviceState) Put(key string, value interface{}) {
 // Device ...
 type Device struct {
 	State *DeviceState
-	name string
-	conn net.Conn
+	name  string
+	conn  net.Conn
 }
 
 // NewDevice ...
 func NewDevice(name string, conn net.Conn) *Device {
 	return &Device{
 		State: NewDeviceState(),
-		name: name,
-		conn: conn,
+		name:  name,
+		conn:  conn,
 	}
 }
 
