@@ -57,32 +57,41 @@ var _ = Describe("Control Message Handlers", func() {
 		})
 	})
 
-	//Context("device to cloud", func() {
-	//	var ctrlMsgHandler *control.MessageHandler
-	//	var response packets.ControlPacket
-	//
-	//	BeforeEach(func() {
-	//		ctrlMsgHandler = control.NewMessageHandler(devs)
-	//
-	//		go func() {
-	//			connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-	//			Expect(connPkg.Write(controlClient)).NotTo(HaveOccurred())
-	//
-	//			// read CONNACK
-	//			_, err := packets.ReadPacket(controlClient)
-	//			Expect(err).NotTo(HaveOccurred())
-	//
-	//			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
-	//			subPkg.Topics = []string{"/matriarch/1.marsara/#"}
-	//			Expect(subPkg.Write(controlClient)).NotTo(HaveOccurred())
-	//
-	//			response, err = packets.ReadPacket(controlClient)
-	//			Expect(err).NotTo(HaveOccurred())
-	//		}()
-	//
-	//		go func() {
-	//			ctrlMsgHandler.HandleConnection(controlServer)
-	//		}()
-	//	})
-	//})
+	Context("device to cloud", func() {
+		var ctrlMsgHandler *control.MessageHandler
+		var response packets.ControlPacket
+		var done chan bool
+
+		BeforeEach(func() {
+			ctrlMsgHandler = control.NewMessageHandler(devs)
+			done = make(chan bool)
+
+			go func() {
+				connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+				Expect(connPkg.Write(controlClient)).NotTo(HaveOccurred())
+
+				// read CONNACK
+				_, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
+
+				subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
+				subPkg.Topics = []string{"/matriarch/1.marsara/#"}
+				subPkg.Qoss = []byte{0}
+				Expect(subPkg.Write(controlClient)).NotTo(HaveOccurred())
+
+				response, err = packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
+				done <- true
+			}()
+
+			go func() {
+				ctrlMsgHandler.HandleConnection(controlServer)
+			}()
+		})
+		It("responds with SUBACK", func() {
+			<-done
+			_, isSubAck := response.(*packets.SubackPacket)
+			Expect(isSubAck).To(BeTrue())
+		})
+	})
 })

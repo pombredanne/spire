@@ -53,6 +53,10 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 				pAck.MessageID = ca.MessageID
 				pAck.Write(conn)
 			}
+		case *packets.SubscribePacket:
+			sAck := packets.NewControlPacket(packets.Suback).(*packets.SubackPacket)
+			sAck.MessageID = ca.MessageID
+			sAck.Write(conn)
 		default:
 			log.Println("ignoring unsupported message")
 		}
