@@ -24,7 +24,7 @@ var _ = Describe("Control Message Handlers", func() {
 			devs = devices.NewDeviceMap()
 			devs.Add("1.marsara", deviceServer)
 
-			ctrlMsgHandler := control.NewMessageHandler(devs)
+			ctrlMsgHandler := control.NewMessageHandler(devs, redisClient)
 
 			go func() {
 				connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
@@ -62,7 +62,7 @@ var _ = Describe("Control Message Handlers", func() {
 
 	BeforeEach(func() {
 		devs = devices.NewDeviceMap()
-		devMsgHandler = devices.NewMessageHandler(devs)
+		devMsgHandler = devices.NewMessageHandler(devs, redisClient)
 
 		server, client = net.Pipe()
 		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)

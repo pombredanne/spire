@@ -10,17 +10,20 @@ import (
 	"sync"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"gopkg.in/redis.v5"
 )
 
 // MessageHandler ...
 type MessageHandler struct {
 	devices *DeviceMap
+	redis   redis.Cmdable
 }
 
 // NewMessageHandler ...
-func NewMessageHandler(devices *DeviceMap) *MessageHandler {
+func NewMessageHandler(devices *DeviceMap, redisClient redis.Cmdable) *MessageHandler {
 	return &MessageHandler{
 		devices: devices,
+		redis:   redisClient,
 	}
 }
 
@@ -41,13 +44,17 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 	}
 
 	deviceName := msg.ClientIdentifier
-	h.devices.Add(deviceName, conn)
+	if err := h.AddDevice(deviceName, conn); err != nil {
+		log.Println(err)
+	}
 
 	cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
 	if err := cAck.Write(conn); err != nil {
 		log.Println(err)
 		conn.Close()
-		h.devices.Remove(deviceName)
+		if err := h.RemoveDevice(deviceName); err != nil {
+			log.Println(err)
+		}
 		return
 	}
 
@@ -57,11 +64,14 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 			if err != io.EOF {
 				log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
 			}
+
 			if err := conn.Close(); err != nil {
 				log.Println(err)
 			}
 
-			h.devices.Remove(deviceName)
+			if err := h.RemoveDevice(deviceName); err != nil {
+				log.Println(err)
+			}
 			return
 		}
 
@@ -70,7 +80,9 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 			if err := conn.Close(); err != nil {
 				log.Println(err)
 			}
-			h.devices.Remove(deviceName)
+			if err := h.RemoveDevice(deviceName); err != nil {
+				log.Println(err)
+			}
 			return
 		case *packets.PublishPacket:
 			if err := dispatch(deviceName, ca, h.devices); err != nil {
@@ -84,6 +96,20 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 			log.Println("ignoring unsupported message from", deviceName)
 		}
 	}
+}
+
+// AddDevice ...
+func (h *MessageHandler) AddDevice(deviceName string, conn net.Conn) (err error) {
+	h.devices.Add(deviceName, conn)
+	_, err = h.redis.HSet(CacheKey(deviceName), "up_state", "up").Result()
+	return
+}
+
+// RemoveDevice ...
+func (h *MessageHandler) RemoveDevice(deviceName string) (err error) {
+	h.devices.Remove(deviceName)
+	_, err = h.redis.HSet(CacheKey(deviceName), "up_state", "down").Result()
+	return
 }
 
 func dispatch(deviceName string, msg *packets.PublishPacket, devs *DeviceMap) error {
@@ -205,4 +231,9 @@ func (d *DeviceMap) Broadcast(topic string, payload []byte) error {
 		}
 	}
 	return nil
+}
+
+// CacheKey ...
+func CacheKey(deviceName string) string {
+	return "armada:" + deviceName
 }

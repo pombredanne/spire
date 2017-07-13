@@ -16,13 +16,18 @@ func main() {
 		panic(err)
 	}
 
+	redisClient, err := service.InitRedis()
+	if err != nil {
+		panic(err)
+	}
+
 	devs := devices.NewDeviceMap()
-	devMsgHandler := devices.NewMessageHandler(devs)
+	devMsgHandler := devices.NewMessageHandler(devs, redisClient)
 
 	devicesServer := service.NewServer(service.Config.DevicesBind, devMsgHandler.HandleConnection)
 	devicesServer.Run()
 
-	ctrlMsgHandler := control.NewMessageHandler(devs)
+	ctrlMsgHandler := control.NewMessageHandler(devs, redisClient)
 	controlServer := service.NewServer(service.Config.ServicesBind, ctrlMsgHandler.HandleConnection)
 	controlServer.Run()
 
