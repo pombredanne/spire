@@ -11,6 +11,7 @@ import (
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	"gopkg.in/redis.v5"
+	"time"
 )
 
 // MessageHandler ...
@@ -20,10 +21,9 @@ type MessageHandler struct {
 }
 
 // NewMessageHandler ...
-func NewMessageHandler(devices *DeviceMap, redisClient redis.Cmdable) *MessageHandler {
+func NewMessageHandler(devices *DeviceMap) *MessageHandler {
 	return &MessageHandler{
 		devices: devices,
-		redis:   redisClient,
 	}
 }
 
@@ -44,7 +44,7 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 	}
 
 	deviceName := msg.ClientIdentifier
-	if err := h.AddDevice(deviceName, conn); err != nil {
+	if err := h.DeviceConnected(deviceName, conn); err != nil {
 		log.Println(err)
 	}
 
@@ -52,7 +52,7 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 	if err := cAck.Write(conn); err != nil {
 		log.Println(err)
 		conn.Close()
-		if err := h.RemoveDevice(deviceName); err != nil {
+		if err := h.DeviceDisconnected(deviceName); err != nil {
 			log.Println(err)
 		}
 		return
@@ -69,7 +69,7 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 				log.Println(err)
 			}
 
-			if err := h.RemoveDevice(deviceName); err != nil {
+			if err := h.DeviceDisconnected(deviceName); err != nil {
 				log.Println(err)
 			}
 			return
@@ -80,7 +80,7 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 			if err := conn.Close(); err != nil {
 				log.Println(err)
 			}
-			if err := h.RemoveDevice(deviceName); err != nil {
+			if err := h.DeviceDisconnected(deviceName); err != nil {
 				log.Println(err)
 			}
 			return
@@ -98,17 +98,21 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 	}
 }
 
-// AddDevice ...
-func (h *MessageHandler) AddDevice(deviceName string, conn net.Conn) (err error) {
-	h.devices.Add(deviceName, conn)
-	_, err = h.redis.HSet(CacheKey(deviceName), "up_state", "up").Result()
+// DeviceConnected ...
+func (h *MessageHandler) DeviceConnected(deviceName string, conn net.Conn) (err error) {
+	dev := h.devices.Add(deviceName, conn)
+	dev.State.Put("up", map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()})
 	return
 }
 
-// RemoveDevice ...
-func (h *MessageHandler) RemoveDevice(deviceName string) (err error) {
-	h.devices.Remove(deviceName)
-	_, err = h.redis.HSet(CacheKey(deviceName), "up_state", "down").Result()
+// DeviceDisconnected ...
+func (h *MessageHandler) DeviceDisconnected(deviceName string) (err error) {
+	dev, err := h.devices.Get(deviceName)
+	if err != nil {
+		return
+	}
+
+	dev.State.Put("up", map[string]interface{}{"state": "down", "timestamp": time.Now().Unix()})
 	return
 }
 
@@ -126,8 +130,39 @@ func dispatch(deviceName string, msg *packets.PublishPacket, devs *DeviceMap) er
 	}
 }
 
+// DeviceState ...
+type DeviceState struct {
+	l sync.RWMutex
+	m map[string]interface{}
+}
+
+// NewDeviceState ...
+func NewDeviceState() *DeviceState {
+	return &DeviceState{
+		m: make(map[string]interface{}),
+	}
+}
+
+// Get ...
+func (s *DeviceState) Get(key string) (interface{}, bool) {
+	s.l.RLock()
+	defer s.l.RUnlock()
+
+	value, exists := s.m[key]
+	return value, exists
+}
+
+// Put ...
+func (s *DeviceState) Put(key string, value interface{}) {
+	s.l.Lock()
+	defer s.l.Unlock()
+
+	s.m[key] = value
+}
+
 // Device ...
 type Device struct {
+	State *DeviceState
 	name string
 	conn net.Conn
 }
@@ -135,6 +170,7 @@ type Device struct {
 // NewDevice ...
 func NewDevice(name string, conn net.Conn) *Device {
 	return &Device{
+		State: NewDeviceState(),
 		name: name,
 		conn: conn,
 	}
@@ -178,33 +214,22 @@ func (d *DeviceMap) Get(name string) (*Device, error) {
 }
 
 // Add ...
-func (d *DeviceMap) Add(name string, conn net.Conn) {
+func (d *DeviceMap) Add(name string, conn net.Conn) *Device {
 	d.l.Lock()
 	defer d.l.Unlock()
 
 	dev, exists := d.m[name]
 	if exists {
-		if dev.conn == conn {
-			return
+		if dev.conn != conn {
+			dev.conn = conn
 		}
 
-		dev.conn.Close()
-	}
-	d.m[name] = NewDevice(name, conn)
-}
-
-// Remove ...
-func (d *DeviceMap) Remove(name string) {
-	d.l.Lock()
-	defer d.l.Unlock()
-
-	dev, exists := d.m[name]
-	if !exists {
-		return
+		return dev
 	}
 
-	dev.conn.Close()
-	delete(d.m, name)
+	dev = NewDevice(name, conn)
+	d.m[name] = dev
+	return dev
 }
 
 // Send ...
@@ -231,9 +256,4 @@ func (d *DeviceMap) Broadcast(topic string, payload []byte) error {
 		}
 	}
 	return nil
-}
-
-// CacheKey ...
-func CacheKey(deviceName string) string {
-	return "armada:" + deviceName
 }

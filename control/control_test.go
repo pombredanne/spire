@@ -13,18 +13,19 @@ import (
 var _ = Describe("Control Message Handlers", func() {
 
 	var devs *devices.DeviceMap
+	var deviceClient, deviceServer, controlClient, controlServer net.Conn
+
+	BeforeEach(func() {
+		deviceClient, deviceServer = net.Pipe()
+		controlServer, controlClient = net.Pipe()
+
+		devs = devices.NewDeviceMap()
+		devs.Add("1.marsara", deviceServer)
+	})
 
 	Context("cloud to device", func() {
-		var deviceClient, deviceServer, controlClient, controlServer net.Conn
-
 		BeforeEach(func() {
-			deviceClient, deviceServer = net.Pipe()
-			controlServer, controlClient = net.Pipe()
-
-			devs = devices.NewDeviceMap()
-			devs.Add("1.marsara", deviceServer)
-
-			ctrlMsgHandler := control.NewMessageHandler(devs, redisClient)
+			ctrlMsgHandler := control.NewMessageHandler(devs)
 
 			go func() {
 				connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
@@ -55,29 +56,33 @@ var _ = Describe("Control Message Handlers", func() {
 			Expect(pkg.Payload).To(Equal([]byte(`{"foo": "bar"}`)))
 		})
 	})
-	var devMsgHandler *devices.MessageHandler
-	var server net.Conn
-	var client net.Conn
-	var response packets.ControlPacket
 
-	BeforeEach(func() {
-		devs = devices.NewDeviceMap()
-		devMsgHandler = devices.NewMessageHandler(devs, redisClient)
-
-		server, client = net.Pipe()
-		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-		connPkg.ClientIdentifier = "1.marsara"
-
-		go func() {
-			Expect(connPkg.Write(client)).NotTo(HaveOccurred())
-		}()
-
-		go func() {
-			devMsgHandler.HandleConnection(server)
-		}()
-
-		var err error
-		response, err = packets.ReadPacket(client)
-		Expect(err).NotTo(HaveOccurred())
-	})
+	//Context("device to cloud", func() {
+	//	var ctrlMsgHandler *control.MessageHandler
+	//	var response packets.ControlPacket
+	//
+	//	BeforeEach(func() {
+	//		ctrlMsgHandler = control.NewMessageHandler(devs)
+	//
+	//		go func() {
+	//			connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+	//			Expect(connPkg.Write(controlClient)).NotTo(HaveOccurred())
+	//
+	//			// read CONNACK
+	//			_, err := packets.ReadPacket(controlClient)
+	//			Expect(err).NotTo(HaveOccurred())
+	//
+	//			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
+	//			subPkg.Topics = []string{"/matriarch/1.marsara/#"}
+	//			Expect(subPkg.Write(controlClient)).NotTo(HaveOccurred())
+	//
+	//			response, err = packets.ReadPacket(controlClient)
+	//			Expect(err).NotTo(HaveOccurred())
+	//		}()
+	//
+	//		go func() {
+	//			ctrlMsgHandler.HandleConnection(controlServer)
+	//		}()
+	//	})
+	//})
 })

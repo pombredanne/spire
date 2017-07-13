@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/devices"
-	"gopkg.in/redis.v5"
 )
 
 var _ = Describe("Device Message Handlers", func() {
@@ -21,11 +20,8 @@ var _ = Describe("Device Message Handlers", func() {
 
 	BeforeEach(func() {
 		devs = devices.NewDeviceMap()
-		devMsgHandler = devices.NewMessageHandler(devs, redisClient)
+		devMsgHandler = devices.NewMessageHandler(devs)
 		server, client = net.Pipe()
-
-		upState, err := redisClient.HGet(devices.CacheKey("1.marsara"), "up_state").Result()
-		Expect(err == redis.Nil || upState == "down").To(BeTrue())
 
 		go func() {
 			connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
@@ -39,6 +35,7 @@ var _ = Describe("Device Message Handlers", func() {
 			done <- true
 		}()
 
+		var err error
 		response, err = packets.ReadPacket(client)
 		Expect(err).NotTo(HaveOccurred())
 	})
@@ -52,10 +49,13 @@ var _ = Describe("Device Message Handlers", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dev).NotTo(BeNil())
 		})
-		It("sets 'up_state' in redis to 'up'", func() {
-			upState, err := redisClient.HGet(devices.CacheKey("1.marsara"), "up_state").Result()
+		It("sets 'up' state on the device", func() {
+			dev, err := devs.Get("1.marsara")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(upState).To(Equal("up"))
+
+			upState, exists := dev.State.Get("up")
+			Expect(exists).To(BeTrue())
+			Expect(upState.(map[string]interface{})["state"]).To(Equal("up"))
 		})
 	})
 	Context("disconnect", func() {
@@ -64,14 +64,35 @@ var _ = Describe("Device Message Handlers", func() {
 				pkg := packets.NewControlPacket(packets.Disconnect)
 				Expect(pkg.Write(client)).NotTo(HaveOccurred())
 			})
-			It("removes the device", func() {
-				_, err := devs.Get("1.marsara")
-				Expect(err).To(Equal(devices.ErrDevNotFound))
-			})
-			It("sets 'up_state' in redis to 'down'", func() {
-				upState, err := redisClient.HGet(devices.CacheKey("1.marsara"), "up_state").Result()
+			It("updates 'up' state on the device", func() {
+				dev, err := devs.Get("1.marsara")
 				Expect(err).NotTo(HaveOccurred())
-				Expect(upState).To(Equal("down"))
+
+				upState, exists := dev.State.Get("up")
+				Expect(exists).To(BeTrue())
+				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
+			})
+			Context("reconnect", func() {
+				BeforeEach(func() {
+					devMsgHandler = devices.NewMessageHandler(devs)
+					server, client = net.Pipe()
+
+					go func() {
+						connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+						connPkg.ClientIdentifier = "1.marsara"
+						Expect(connPkg.Write(client)).NotTo(HaveOccurred())
+					}()
+
+					done = make(chan bool)
+					go func() {
+						devMsgHandler.HandleConnection(server)
+						done <- true
+					}()
+
+					var err error
+					response, err = packets.ReadPacket(client)
+					Expect(err).NotTo(HaveOccurred())
+				})
 			})
 		})
 		Context("by closing the connection", func() {
@@ -79,14 +100,13 @@ var _ = Describe("Device Message Handlers", func() {
 				Expect(client.Close()).ToNot(HaveOccurred())
 				<-done
 			})
-			It("removes the device", func() {
-				_, err := devs.Get("1.marsara")
-				Expect(err).To(Equal(devices.ErrDevNotFound))
-			})
-			It("sets 'up_state' in redis to 'down'", func() {
-				upState, err := redisClient.HGet(devices.CacheKey("1.marsara"), "up_state").Result()
+			It("updates 'up' state on the device", func() {
+				dev, err := devs.Get("1.marsara")
 				Expect(err).NotTo(HaveOccurred())
-				Expect(upState).To(Equal("down"))
+
+				upState, exists := dev.State.Get("up")
+				Expect(exists).To(BeTrue())
+				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
 			})
 		})
 	})

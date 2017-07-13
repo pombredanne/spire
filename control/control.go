@@ -10,20 +10,17 @@ import (
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	"github.com/superscale/spire/devices"
-	"gopkg.in/redis.v5"
 )
 
 // MessageHandler ...
 type MessageHandler struct {
 	devices *devices.DeviceMap
-	redis   redis.Cmdable
 }
 
 // NewMessageHandler ...
-func NewMessageHandler(devices *devices.DeviceMap, redisClient redis.Cmdable) *MessageHandler {
+func NewMessageHandler(devices *devices.DeviceMap) *MessageHandler {
 	return &MessageHandler{
 		devices: devices,
-		redis:   redisClient,
 	}
 }
 
