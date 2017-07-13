@@ -234,12 +234,9 @@ func (d *DeviceMap) Add(name string, conn net.Conn) *Device {
 
 // Send ...
 func (d *DeviceMap) Send(name, topic string, payload []byte) error {
-	d.l.RLock()
-	defer d.l.RUnlock()
-
-	dev, exists := d.m[name]
-	if !exists {
-		return ErrDevNotFound
+	dev, err := d.Get(name)
+	if err != nil {
+		return err
 	}
 
 	return dev.Send(topic, payload)
