@@ -2,7 +2,6 @@ package devices_test
 
 import (
 	"net"
-	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
@@ -18,6 +17,7 @@ var _ = Describe("Device Message Handlers", func() {
 	var server net.Conn
 	var client net.Conn
 	var response packets.ControlPacket
+	var done chan bool
 
 	BeforeEach(func() {
 		devs = devices.NewDeviceMap()
@@ -33,8 +33,10 @@ var _ = Describe("Device Message Handlers", func() {
 			Expect(connPkg.Write(client)).NotTo(HaveOccurred())
 		}()
 
+		done = make(chan bool)
 		go func() {
 			devMsgHandler.HandleConnection(server)
+			done <- true
 		}()
 
 		response, err = packets.ReadPacket(client)
@@ -75,17 +77,13 @@ var _ = Describe("Device Message Handlers", func() {
 		Context("by closing the connection", func() {
 			BeforeEach(func() {
 				Expect(client.Close()).ToNot(HaveOccurred())
-				buf := make([]byte, 5)
-				server.Read(buf)
+				<-done
 			})
 			It("removes the device", func() {
-				// Since the function under test runs in a goroutine, we need this to avoid a race condition. :(
-				time.Sleep(time.Millisecond * 1)
 				_, err := devs.Get("1.marsara")
 				Expect(err).To(Equal(devices.ErrDevNotFound))
 			})
 			It("sets 'up_state' in redis to 'down'", func() {
-				time.Sleep(time.Millisecond * 1)
 				upState, err := redisClient.HGet(devices.CacheKey("1.marsara"), "up_state").Result()
 				Expect(err).NotTo(HaveOccurred())
 				Expect(upState).To(Equal("down"))
