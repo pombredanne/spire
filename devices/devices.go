@@ -86,10 +86,6 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 			if err := dispatch(deviceName, ca, h.devices); err != nil {
 				log.Println(err)
 			}
-
-			pAck := packets.NewControlPacket(packets.Puback).(*packets.PubackPacket)
-			pAck.MessageID = ca.MessageID
-			pAck.Write(conn)
 		default:
 			log.Println("ignoring unsupported message from", deviceName)
 		}
@@ -115,6 +111,10 @@ func (h *MessageHandler) DeviceDisconnected(deviceName string) (err error) {
 }
 
 func dispatch(deviceName string, msg *packets.PublishPacket, devs *DeviceMap) error {
+	if msg.Qos > 0 {
+		panic("QoS > 0 is not supported")
+	}
+
 	parts := strings.Split(msg.TopicName, "/")
 	if len(parts) < 4 || parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName {
 		return fmt.Errorf("invalid message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
@@ -128,21 +128,21 @@ func dispatch(deviceName string, msg *packets.PublishPacket, devs *DeviceMap) er
 	}
 }
 
-// DeviceState ...
-type DeviceState struct {
+// SyncMap ...
+type SyncMap struct {
 	l sync.RWMutex
 	m map[string]interface{}
 }
 
-// NewDeviceState ...
-func NewDeviceState() *DeviceState {
-	return &DeviceState{
+// NewSyncMap ...
+func NewSyncMap() *SyncMap {
+	return &SyncMap{
 		m: make(map[string]interface{}),
 	}
 }
 
 // Get ...
-func (s *DeviceState) Get(key string) (interface{}, bool) {
+func (s *SyncMap) Get(key string) (interface{}, bool) {
 	s.l.RLock()
 	defer s.l.RUnlock()
 
@@ -151,7 +151,7 @@ func (s *DeviceState) Get(key string) (interface{}, bool) {
 }
 
 // Put ...
-func (s *DeviceState) Put(key string, value interface{}) {
+func (s *SyncMap) Put(key string, value interface{}) {
 	s.l.Lock()
 	defer s.l.Unlock()
 
@@ -160,7 +160,7 @@ func (s *DeviceState) Put(key string, value interface{}) {
 
 // Device ...
 type Device struct {
-	State *DeviceState
+	State *SyncMap
 	name  string
 	conn  net.Conn
 }
@@ -168,16 +168,16 @@ type Device struct {
 // NewDevice ...
 func NewDevice(name string, conn net.Conn) *Device {
 	return &Device{
-		State: NewDeviceState(),
+		State: NewSyncMap(),
 		name:  name,
 		conn:  conn,
 	}
 }
 
-// Send ...
+// Send a publish packet with topic, payload and QoS 0 to the device
 func (d *Device) Send(topic string, payload []byte) error {
 	pkg := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)
-	pkg.Qos = 1
+	pkg.Qos = 0
 	pkg.TopicName = topic
 	pkg.Payload = payload
 	return pkg.Write(d.conn)
