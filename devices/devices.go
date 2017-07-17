@@ -10,7 +10,6 @@ import (
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	"github.com/superscale/spire/mqtt"
-	"github.com/superscale/spire/service"
 )
 
 // State is a crappy name
@@ -30,13 +29,13 @@ func NewState() *State {
 // MessageHandler ...
 type MessageHandler struct {
 	state  *State
-	broker *service.Broker
+	broker *mqtt.Broker
 }
 
 // NewMessageHandler ...
-func NewMessageHandler(state *State, broker *service.Broker) *MessageHandler {
+func NewMessageHandler(state *State, broker *mqtt.Broker) *MessageHandler {
 	return &MessageHandler{
-		state: state,
+		state:  state,
 		broker: broker,
 	}
 }

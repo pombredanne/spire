@@ -1,11 +1,11 @@
 package mqtt
 
 import (
+	"encoding/json"
 	"errors"
 	"net"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"encoding/json"
 )
 
 // Connect performs the connection handshake and returns the connect packet or an error

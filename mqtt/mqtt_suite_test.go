@@ -1,4 +1,4 @@
-package service_test
+package mqtt_test
 
 import (
 	"testing"
@@ -15,6 +15,6 @@ var _ = BeforeSuite(func() {
 // TestHandlers ...
 func TestHandlers(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Spire Service Suite")
+	RunSpecs(t, "Spire MQTT Suite")
 }
 

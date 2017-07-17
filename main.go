@@ -5,9 +5,10 @@ import (
 	"os/signal"
 
 	"github.com/caarlos0/env"
-	"github.com/superscale/spire/service"
-	"github.com/superscale/spire/devices"
 	"github.com/superscale/spire/control"
+	"github.com/superscale/spire/devices"
+	"github.com/superscale/spire/mqtt"
+	"github.com/superscale/spire/service"
 )
 
 func main() {
@@ -17,7 +18,7 @@ func main() {
 	}
 
 	state := devices.NewState()
-	broker := service.NewBroker()
+	broker := mqtt.NewBroker()
 
 	devMsgHandler := devices.NewMessageHandler(state, broker)
 

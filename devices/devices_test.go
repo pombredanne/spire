@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/devices"
-	"github.com/superscale/spire/service"
+	"github.com/superscale/spire/mqtt"
 )
 
 var _ = Describe("Device Message Handlers", func() {
@@ -24,7 +24,7 @@ var _ = Describe("Device Message Handlers", func() {
 	BeforeEach(func() {
 		state = devices.NewState()
 		devs = state.Devices
-		devMsgHandler = devices.NewMessageHandler(state, service.NewBroker())
+		devMsgHandler = devices.NewMessageHandler(state, mqtt.NewBroker())
 		server, client = net.Pipe()
 
 		go func() {
@@ -80,7 +80,7 @@ var _ = Describe("Device Message Handlers", func() {
 			})
 			Context("reconnect", func() {
 				BeforeEach(func() {
-					devMsgHandler = devices.NewMessageHandler(state, service.NewBroker())
+					devMsgHandler = devices.NewMessageHandler(state, mqtt.NewBroker())
 					server, client = net.Pipe()
 
 					go func() {

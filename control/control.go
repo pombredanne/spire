@@ -10,17 +10,16 @@ import (
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	"github.com/superscale/spire/devices"
 	"github.com/superscale/spire/mqtt"
-	"github.com/superscale/spire/service"
 )
 
 // MessageHandler ...
 type MessageHandler struct {
 	state  *devices.State
-	broker *service.Broker
+	broker *mqtt.Broker
 }
 
 // NewMessageHandler ...
-func NewMessageHandler(state *devices.State, broker *service.Broker) *MessageHandler {
+func NewMessageHandler(state *devices.State, broker *mqtt.Broker) *MessageHandler {
 	return &MessageHandler{
 		state:  state,
 		broker: broker,

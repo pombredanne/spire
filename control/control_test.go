@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/control"
 	"github.com/superscale/spire/devices"
-	"github.com/superscale/spire/service"
+	"github.com/superscale/spire/mqtt"
 )
 
 var _ = Describe("Control Message Handlers", func() {
@@ -28,7 +28,7 @@ var _ = Describe("Control Message Handlers", func() {
 
 	Context("cloud to device", func() {
 		BeforeEach(func() {
-			ctrlMsgHandler := control.NewMessageHandler(state, service.NewBroker())
+			ctrlMsgHandler := control.NewMessageHandler(state, mqtt.NewBroker())
 
 			go func() {
 				connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
@@ -66,7 +66,7 @@ var _ = Describe("Control Message Handlers", func() {
 		var done chan bool
 
 		BeforeEach(func() {
-			ctrlMsgHandler = control.NewMessageHandler(state, service.NewBroker())
+			ctrlMsgHandler = control.NewMessageHandler(state, mqtt.NewBroker())
 			done = make(chan bool)
 
 			go func() {

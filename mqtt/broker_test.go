@@ -1,4 +1,4 @@
-package service_test
+package mqtt_test
 
 import (
 	"encoding/json"
@@ -8,19 +8,18 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/mqtt"
-	"github.com/superscale/spire/service"
 )
 
 var _ = Describe("Broker", func() {
 
 	Context("subscribe", func() {
 		var brokerConn, subscriberConn net.Conn
-		var broker *service.Broker
+		var broker *mqtt.Broker
 		var subResponse packets.ControlPacket
 
 		BeforeEach(func() {
 			brokerConn, subscriberConn = net.Pipe()
-			broker = service.NewBroker()
+			broker = mqtt.NewBroker()
 
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 			subPkg.Topics = []string{"/pylon/1.marsara/up"}
@@ -90,7 +89,7 @@ var _ = Describe("Broker", func() {
 		var matches []string
 
 		JustBeforeEach(func() {
-			matches = service.MatchTopics(publishTopic, topics)
+			matches = mqtt.MatchTopics(publishTopic, topics)
 		})
 		Context("exact match", func() {
 			BeforeEach(func() {
