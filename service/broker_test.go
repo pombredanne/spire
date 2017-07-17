@@ -12,10 +12,10 @@ import (
 )
 
 var _ = Describe("Broker", func() {
-	var brokerConn, subscriberConn net.Conn
-	var broker *service.Broker
 
 	Context("subscribe", func() {
+		var brokerConn, subscriberConn net.Conn
+		var broker *service.Broker
 		var subResponse packets.ControlPacket
 
 		BeforeEach(func() {
@@ -81,6 +81,80 @@ var _ = Describe("Broker", func() {
 				unsubAckPkg, ok := response.(*packets.UnsubackPacket)
 				Expect(ok).To(BeTrue())
 				Expect(unsubAckPkg.MessageID).To(Equal(uint16(1338)))
+			})
+		})
+	})
+	Context("topic matching", func() {
+		var publishTopic string
+		var topics []string
+		var matches []string
+
+		JustBeforeEach(func() {
+			matches = service.MatchTopics(publishTopic, topics)
+		})
+		Context("exact match", func() {
+			BeforeEach(func() {
+				publishTopic = "/armada/1.marsara/up"
+
+				topics = []string{
+					"/armada/2.zenn/stations",
+					"/armada/1.marsara/ota",
+					"/armada/1.marsara/up",
+					"/pylon/1.marsara/up",
+				}
+			})
+			It("returns the matching topic", func() {
+				Expect(len(matches)).To(Equal(1))
+				Expect(matches[0]).To(Equal("/armada/1.marsara/up"))
+			})
+		})
+		Context("with multi-level wildcard '#' at the end", func() {
+			BeforeEach(func() {
+				publishTopic = "/armada/1.marsara/up"
+
+				topics = []string{
+					"/armada/2.zenn/stations",
+					"/armada/1.marsara/ota",
+					"/armada/1.marsara/#",
+					"/armada/3.korhal/#",
+				}
+			})
+			It("matches", func() {
+				Expect(len(matches)).To(Equal(1))
+				Expect(matches[0]).To(Equal("/armada/1.marsara/#"))
+			})
+		})
+		Context("with multi-level wildcards", func() {
+			BeforeEach(func() {
+				publishTopic = "/armada/1.marsara/up"
+
+				topics = []string{
+					"/armada/2.zenn/stations",
+					"/armada/1.marsara/ota",
+					"/armada/1.marsara/#",
+					"/armada/#/up",
+				}
+			})
+			It("returns the matching topic", func() {
+				Expect(len(matches)).To(Equal(2))
+				Expect(matches[0]).To(Equal("/armada/1.marsara/#"))
+				Expect(matches[1]).To(Equal("/armada/#/up"))
+			})
+		})
+		Context("with multi-level wildcards and nested topic", func() {
+			BeforeEach(func() {
+				publishTopic = "/armada/1.marsara/sys/facts"
+
+				topics = []string{
+					"/armada/2.zenn/stations",
+					"/armada/1.marsara/ota",
+					"/armada/1.marsara/#",
+					"/armada/#/sys",
+				}
+			})
+			It("returns the matching topic", func() {
+				Expect(len(matches)).To(Equal(1))
+				Expect(matches[0]).To(Equal("/armada/1.marsara/#"))
 			})
 		})
 	})

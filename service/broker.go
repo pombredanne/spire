@@ -3,6 +3,7 @@ package service
 import (
 	"log"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
@@ -31,14 +32,19 @@ func NewBroker(devices *devices.DeviceMap) *Broker {
 // Subscribe adds the connection to the list of subscribers to the topic
 func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
 	if len(pkg.Topics) > len(pkg.Qoss) {
-		// TODO send error reponse to conn
-		panic("malformed SUBSCRIBE packet")
+		// according to
+		// http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc398718110
+		// we kill the connection if we don't like a packet
+		b.Remove(conn)
+		conn.Close()
+		return
 	}
 
 	for i, topic := range pkg.Topics {
 		if pkg.Qoss[i] > 0 {
-			// TODO send error reponse to conn
-			panic("QoS > 0 not supported")
+			b.Remove(conn)
+			conn.Close()
+			return
 		}
 
 		b.subscribers.add(topic, conn)
@@ -62,8 +68,12 @@ func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
 
 // Publish ...
 func (b *Broker) Publish(pkg *packets.PublishPacket) {
-	// TODO support wildcards
-	subs := b.subscribers.get(pkg.TopicName)
+	subs := []net.Conn{}
+	topics := b.subscribers.keys()
+
+	for _, t := range topics {
+		subs = append(subs, b.subscribers.get(t)...)
+	}
 
 	for _, s := range subs {
 		// we might want to limit concurrency with a worker pool
@@ -82,6 +92,42 @@ func (b *Broker) Remove(conn net.Conn) {
 	b.subscribers.remove(conn)
 }
 
+// MatchTopics is only exported for tests :(
+func MatchTopics(topic string, topics []string) []string {
+	matches := []string{}
+	topicParts := strings.Split(topic, "/")
+
+	for _, t := range topics {
+		if topicsMatch(topicParts, strings.Split(t, "/")) {
+			matches = append(matches, t)
+		}
+	}
+	return matches
+}
+
+// parameters are the topics split on "/"
+// assumes that the topic in the first parameter does not contain wildcards
+func topicsMatch(t1, t2 []string) bool {
+	l1 := len(t1)
+	l2 := len(t2)
+
+	if l1 != l2 && t2[l2-1] != "#" {
+		return false
+	}
+
+	l := l1
+	if l2 < l1 {
+		l = l2
+	}
+
+	for i := 0; i < l; i++ {
+		if t1[i] != t2[i] && t2[i] != "#" {
+			return false
+		}
+	}
+	return true
+}
+
 type subscriberMap struct {
 	l sync.RWMutex
 	m map[string][]net.Conn
@@ -91,6 +137,20 @@ func newSubscriberMap() *subscriberMap {
 	return &subscriberMap{
 		m: make(map[string][]net.Conn),
 	}
+}
+
+func (d *subscriberMap) keys() []string {
+	d.l.RLock()
+	defer d.l.RUnlock()
+
+	i := 0
+	res := make([]string, len(d.m))
+	for key := range d.m {
+		res[i] = key
+		i++
+	}
+
+	return res
 }
 
 func (d *subscriberMap) get(topic string) []net.Conn {
