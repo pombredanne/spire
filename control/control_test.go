@@ -8,10 +8,12 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/control"
 	"github.com/superscale/spire/devices"
+	"github.com/superscale/spire/service"
 )
 
 var _ = Describe("Control Message Handlers", func() {
 
+	var state *devices.State
 	var devs *devices.DeviceMap
 	var deviceClient, deviceServer, controlClient, controlServer net.Conn
 
@@ -19,13 +21,14 @@ var _ = Describe("Control Message Handlers", func() {
 		deviceClient, deviceServer = net.Pipe()
 		controlServer, controlClient = net.Pipe()
 
-		devs = devices.NewDeviceMap()
+		state = devices.NewState()
+		devs = state.Devices
 		devs.Add("1.marsara", deviceServer)
 	})
 
 	Context("cloud to device", func() {
 		BeforeEach(func() {
-			ctrlMsgHandler := control.NewMessageHandler(devs)
+			ctrlMsgHandler := control.NewMessageHandler(state, service.NewBroker())
 
 			go func() {
 				connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
@@ -63,7 +66,7 @@ var _ = Describe("Control Message Handlers", func() {
 		var done chan bool
 
 		BeforeEach(func() {
-			ctrlMsgHandler = control.NewMessageHandler(devs)
+			ctrlMsgHandler = control.NewMessageHandler(state, service.NewBroker())
 			done = make(chan bool)
 
 			go func() {

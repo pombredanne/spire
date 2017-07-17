@@ -2,15 +2,18 @@ package devices_test
 
 import (
 	"net"
+	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/devices"
+	"github.com/superscale/spire/service"
 )
 
 var _ = Describe("Device Message Handlers", func() {
 
+	var state *devices.State
 	var devs *devices.DeviceMap
 	var devMsgHandler *devices.MessageHandler
 	var server net.Conn
@@ -19,8 +22,9 @@ var _ = Describe("Device Message Handlers", func() {
 	var done chan bool
 
 	BeforeEach(func() {
-		devs = devices.NewDeviceMap()
-		devMsgHandler = devices.NewMessageHandler(devs)
+		state = devices.NewState()
+		devs = state.Devices
+		devMsgHandler = devices.NewMessageHandler(state, service.NewBroker())
 		server, client = net.Pipe()
 
 		go func() {
@@ -45,15 +49,17 @@ var _ = Describe("Device Message Handlers", func() {
 			Expect(ok).To(BeTrue())
 		})
 		It("adds the device", func() {
+			time.Sleep(time.Microsecond * 10) // gross
 			dev, err := devs.Get("1.marsara")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dev).NotTo(BeNil())
 		})
 		It("sets 'up' state on the device", func() {
+			time.Sleep(time.Microsecond * 10) // gross
 			dev, err := devs.Get("1.marsara")
 			Expect(err).NotTo(HaveOccurred())
 
-			upState, exists := dev.State.Get("up")
+			upState, exists := dev.GetState("up")
 			Expect(exists).To(BeTrue())
 			Expect(upState.(map[string]interface{})["state"]).To(Equal("up"))
 		})
@@ -68,13 +74,13 @@ var _ = Describe("Device Message Handlers", func() {
 				dev, err := devs.Get("1.marsara")
 				Expect(err).NotTo(HaveOccurred())
 
-				upState, exists := dev.State.Get("up")
+				upState, exists := dev.GetState("up")
 				Expect(exists).To(BeTrue())
 				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
 			})
 			Context("reconnect", func() {
 				BeforeEach(func() {
-					devMsgHandler = devices.NewMessageHandler(devs)
+					devMsgHandler = devices.NewMessageHandler(state, service.NewBroker())
 					server, client = net.Pipe()
 
 					go func() {
@@ -104,7 +110,7 @@ var _ = Describe("Device Message Handlers", func() {
 				dev, err := devs.Get("1.marsara")
 				Expect(err).NotTo(HaveOccurred())
 
-				upState, exists := dev.State.Get("up")
+				upState, exists := dev.GetState("up")
 				Expect(exists).To(BeTrue())
 				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
 			})

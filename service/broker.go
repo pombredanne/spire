@@ -7,24 +7,16 @@ import (
 	"sync"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"github.com/superscale/spire/devices"
 )
-
-type state struct {
-	FormationState *devices.SyncMap
-	Devices        *devices.DeviceMap
-}
 
 // Broker manages pub/sub
 type Broker struct {
-	formations  map[string]state // not sure whether this map needs locking
 	subscribers *subscriberMap
 }
 
 // NewBroker ...
-func NewBroker(devices *devices.DeviceMap) *Broker {
+func NewBroker() *Broker {
 	return &Broker{
-		formations:  make(map[string]state),
 		subscribers: newSubscriberMap(),
 	}
 }

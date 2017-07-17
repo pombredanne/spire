@@ -16,13 +16,15 @@ func main() {
 		panic(err)
 	}
 
-	devs := devices.NewDeviceMap()
-	devMsgHandler := devices.NewMessageHandler(devs)
+	state := devices.NewState()
+	broker := service.NewBroker()
+
+	devMsgHandler := devices.NewMessageHandler(state, broker)
 
 	devicesServer := service.NewServer(service.Config.DevicesBind, devMsgHandler.HandleConnection)
 	devicesServer.Run()
 
-	ctrlMsgHandler := control.NewMessageHandler(devs)
+	ctrlMsgHandler := control.NewMessageHandler(state, broker)
 	controlServer := service.NewServer(service.Config.ServicesBind, ctrlMsgHandler.HandleConnection)
 	controlServer.Run()
 

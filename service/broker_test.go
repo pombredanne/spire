@@ -7,7 +7,7 @@ import (
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	devpkg "github.com/superscale/spire/devices"
+	"github.com/superscale/spire/mqtt"
 	"github.com/superscale/spire/service"
 )
 
@@ -20,7 +20,7 @@ var _ = Describe("Broker", func() {
 
 		BeforeEach(func() {
 			brokerConn, subscriberConn = net.Pipe()
-			broker = service.NewBroker(devpkg.NewDeviceMap())
+			broker = service.NewBroker()
 
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 			subPkg.Topics = []string{"/pylon/1.marsara/up"}
@@ -43,7 +43,7 @@ var _ = Describe("Broker", func() {
 
 			BeforeEach(func() {
 				payload := map[string]string{"foo": "bar"}
-				pubPkg, err := service.MakePublishPacket("/pylon/1.marsara/up", payload)
+				pubPkg, err := mqtt.MakePublishPacket("/pylon/1.marsara/up", payload)
 				Expect(err).NotTo(HaveOccurred())
 
 				broker.Publish(pubPkg)

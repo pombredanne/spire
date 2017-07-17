@@ -1,59 +1,58 @@
 package devices
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"github.com/superscale/spire/mqtt"
+	"github.com/superscale/spire/service"
 )
+
+// State is a crappy name
+type State struct {
+	FormationState *syncMap
+	Devices        *DeviceMap
+}
+
+// NewState ...
+func NewState() *State {
+	return &State{
+		FormationState: newSyncMap(),
+		Devices:        NewDeviceMap(),
+	}
+}
 
 // MessageHandler ...
 type MessageHandler struct {
-	devices *DeviceMap
+	state  *State
+	broker *service.Broker
 }
 
 // NewMessageHandler ...
-func NewMessageHandler(devices *DeviceMap) *MessageHandler {
+func NewMessageHandler(state *State, broker *service.Broker) *MessageHandler {
 	return &MessageHandler{
-		devices: devices,
+		state: state,
+		broker: broker,
 	}
 }
 
 // HandleConnection receives a connection from a device and dispatches its messages to the designated handler
 func (h *MessageHandler) HandleConnection(conn net.Conn) {
-	ca, err := packets.ReadPacket(conn)
+	connectPkg, err := mqtt.Connect(conn)
 	if err != nil {
 		log.Println("error while reading packet:", err, "closing connection")
 		conn.Close()
 		return
 	}
 
-	msg, ok := ca.(*packets.ConnectPacket)
-	if !ok {
-		log.Println("expected a CONNECT message, got some other garbage instead. closing connection")
-		conn.Close()
-		return
-	}
-
-	deviceName := msg.ClientIdentifier
+	deviceName := connectPkg.ClientIdentifier
 	if err := h.DeviceConnected(deviceName, conn); err != nil {
 		log.Println(err)
-	}
-
-	cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
-	if err := cAck.Write(conn); err != nil {
-		log.Println(err)
-		conn.Close()
-		if err := h.DeviceDisconnected(deviceName); err != nil {
-			log.Println(err)
-		}
-		return
 	}
 
 	for {
@@ -83,7 +82,7 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 			}
 			return
 		case *packets.PublishPacket:
-			if err := dispatch(deviceName, ca, h.devices); err != nil {
+			if err := h.dispatch(deviceName, ca); err != nil {
 				log.Println(err)
 			}
 		default:
@@ -94,23 +93,23 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 
 // DeviceConnected ...
 func (h *MessageHandler) DeviceConnected(deviceName string, conn net.Conn) (err error) {
-	dev := h.devices.Add(deviceName, conn)
-	dev.State.Put("up", map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()})
+	dev := h.state.Devices.Add(deviceName, conn)
+	dev.PutState("up", map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()})
 	return
 }
 
 // DeviceDisconnected ...
 func (h *MessageHandler) DeviceDisconnected(deviceName string) (err error) {
-	dev, err := h.devices.Get(deviceName)
+	dev, err := h.state.Devices.Get(deviceName)
 	if err != nil {
 		return
 	}
 
-	dev.State.Put("up", map[string]interface{}{"state": "down", "timestamp": time.Now().Unix()})
+	dev.PutState("up", map[string]interface{}{"state": "down", "timestamp": time.Now().Unix()})
 	return
 }
 
-func dispatch(deviceName string, msg *packets.PublishPacket, devs *DeviceMap) error {
+func (h *MessageHandler) dispatch(deviceName string, msg *packets.PublishPacket) error {
 	if msg.Qos > 0 {
 		panic("QoS > 0 is not supported")
 	}
@@ -122,133 +121,8 @@ func dispatch(deviceName string, msg *packets.PublishPacket, devs *DeviceMap) er
 
 	switch parts[3] {
 	case "ping":
-		return HandlePing(deviceName, msg.TopicName, msg.Payload, devs)
+		return HandlePing(deviceName, msg.TopicName, msg.Payload, h.state, h.broker)
 	default:
 		return fmt.Errorf("unsupported message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
 	}
-}
-
-// SyncMap ...
-type SyncMap struct {
-	l sync.RWMutex
-	m map[string]interface{}
-}
-
-// NewSyncMap ...
-func NewSyncMap() *SyncMap {
-	return &SyncMap{
-		m: make(map[string]interface{}),
-	}
-}
-
-// Get ...
-func (s *SyncMap) Get(key string) (interface{}, bool) {
-	s.l.RLock()
-	defer s.l.RUnlock()
-
-	value, exists := s.m[key]
-	return value, exists
-}
-
-// Put ...
-func (s *SyncMap) Put(key string, value interface{}) {
-	s.l.Lock()
-	defer s.l.Unlock()
-
-	s.m[key] = value
-}
-
-// Device ...
-type Device struct {
-	State *SyncMap
-	name  string
-	conn  net.Conn
-}
-
-// NewDevice ...
-func NewDevice(name string, conn net.Conn) *Device {
-	return &Device{
-		State: NewSyncMap(),
-		name:  name,
-		conn:  conn,
-	}
-}
-
-// Send a publish packet with topic, payload and QoS 0 to the device
-func (d *Device) Send(topic string, payload []byte) error {
-	pkg := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)
-	pkg.Qos = 0
-	pkg.TopicName = topic
-	pkg.Payload = payload
-	return pkg.Write(d.conn)
-}
-
-// ErrDevNotFound ...
-var ErrDevNotFound = errors.New("device not found")
-
-// DeviceMap ...
-type DeviceMap struct {
-	l sync.RWMutex
-	m map[string]*Device
-}
-
-// NewDeviceMap ...
-func NewDeviceMap() *DeviceMap {
-	return &DeviceMap{
-		m: make(map[string]*Device),
-	}
-}
-
-// Get ...
-func (d *DeviceMap) Get(name string) (*Device, error) {
-	d.l.RLock()
-	defer d.l.RUnlock()
-
-	dev, exists := d.m[name]
-	if !exists {
-		return nil, ErrDevNotFound
-	}
-	return dev, nil
-}
-
-// Add ...
-func (d *DeviceMap) Add(name string, conn net.Conn) *Device {
-	d.l.Lock()
-	defer d.l.Unlock()
-
-	dev, exists := d.m[name]
-	if exists {
-		if dev.conn != conn {
-			dev.conn = conn
-		}
-
-		return dev
-	}
-
-	dev = NewDevice(name, conn)
-	d.m[name] = dev
-	return dev
-}
-
-// Send ...
-func (d *DeviceMap) Send(name, topic string, payload []byte) error {
-	dev, err := d.Get(name)
-	if err != nil {
-		return err
-	}
-
-	return dev.Send(topic, payload)
-}
-
-// Broadcast ...
-func (d *DeviceMap) Broadcast(topic string, payload []byte) error {
-	d.l.RLock()
-	defer d.l.RUnlock()
-
-	for _, dev := range d.m {
-		if err := dev.Send(topic, payload); err != nil {
-			return err
-		}
-	}
-	return nil
 }
