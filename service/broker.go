@@ -5,8 +5,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/superscale/spire/devices"
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"github.com/superscale/spire/devices"
 )
 
 type state struct {
@@ -30,6 +30,11 @@ func NewBroker(devices *devices.DeviceMap) *Broker {
 
 // Subscribe adds the connection to the list of subscribers to the topic
 func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
+	if len(pkg.Topics) > len(pkg.Qoss) {
+		// TODO send error reponse to conn
+		panic("malformed SUBSCRIBE packet")
+	}
+
 	for i, topic := range pkg.Topics {
 		if pkg.Qoss[i] > 0 {
 			// TODO send error reponse to conn
@@ -55,26 +60,26 @@ func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
 	sAck.Write(conn)
 }
 
-// Publish does JSON marshalling unless payload is of type []byte
-// messages are send with QoS 0
-func (b *Broker) Publish(topic string, message interface{}) (err error) {
-	pkg, err := MakePublishPacket(topic, message)
-	if err != nil {
-		return
-	}
-
+// Publish ...
+func (b *Broker) Publish(pkg *packets.PublishPacket) {
 	// TODO support wildcards
-	subs := b.subscribers.get(topic)
+	subs := b.subscribers.get(pkg.TopicName)
+
 	for _, s := range subs {
 		// we might want to limit concurrency with a worker pool
 		go func(conn net.Conn) {
-			err = pkg.Write(conn)
+			err := pkg.Write(conn)
 			if err != nil {
 				log.Println(err)
 			}
 		}(s)
 	}
 	return
+}
+
+// Remove ...
+func (b *Broker) Remove(conn net.Conn) {
+	b.subscribers.remove(conn)
 }
 
 type subscriberMap struct {
