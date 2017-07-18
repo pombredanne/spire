@@ -11,13 +11,14 @@ import (
 
 // Broker manages pub/sub
 type Broker struct {
-	subscribers *subscriberMap
+	l           sync.RWMutex
+	subscribers map[string][]net.Conn
 }
 
 // NewBroker ...
 func NewBroker() *Broker {
 	return &Broker{
-		subscribers: newSubscriberMap(),
+		subscribers: make(map[string][]net.Conn),
 	}
 }
 
@@ -39,7 +40,7 @@ func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
 			return
 		}
 
-		b.subscribers.add(topic, conn)
+		b.add(topic, conn)
 	}
 
 	sAck := packets.NewControlPacket(packets.Suback).(*packets.SubackPacket)
@@ -50,7 +51,7 @@ func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
 // Unsubscribe removes the connection from the list of subscribers to the topic
 func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
 	for _, topic := range pkg.Topics {
-		b.subscribers.removeFromTopic(topic, conn)
+		b.removeFromTopic(topic, conn)
 	}
 
 	sAck := packets.NewControlPacket(packets.Unsuback).(*packets.UnsubackPacket)
@@ -61,10 +62,9 @@ func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
 // Publish ...
 func (b *Broker) Publish(pkg *packets.PublishPacket) {
 	subs := []net.Conn{}
-	topics := b.subscribers.keys()
 
-	for _, t := range topics {
-		subs = append(subs, b.subscribers.get(t)...)
+	for _, t := range b.topics() {
+		subs = append(subs, b.get(t)...)
 	}
 
 	for _, s := range subs {
@@ -81,7 +81,26 @@ func (b *Broker) Publish(pkg *packets.PublishPacket) {
 
 // Remove ...
 func (b *Broker) Remove(conn net.Conn) {
-	b.subscribers.remove(conn)
+	b.l.Lock()
+	defer b.l.Unlock()
+
+	for topic, conns := range b.subscribers {
+		i := indexOf(conns, conn)
+		if i < 0 {
+			continue
+		}
+
+		// from https://github.com/golang/go/wiki/SliceTricks
+		copy(conns[i:], conns[i+1:])
+		conns[len(conns)-1] = nil
+		conns = conns[:len(conns)-1]
+
+		if len(conns) == 0 {
+			delete(b.subscribers, topic)
+		} else {
+			b.subscribers[topic] = conns
+		}
+	}
 }
 
 // MatchTopics is only exported for tests :(
@@ -95,6 +114,78 @@ func MatchTopics(topic string, topics []string) []string {
 		}
 	}
 	return matches
+}
+
+func (b *Broker) topics() []string {
+	b.l.RLock()
+	defer b.l.RUnlock()
+
+	i := 0
+	res := make([]string, len(b.subscribers))
+	for topic := range b.subscribers {
+		res[i] = topic
+		i++
+	}
+
+	return res
+}
+
+func (b *Broker) get(topic string) []net.Conn {
+	b.l.RLock()
+	defer b.l.RUnlock()
+
+	subs, exists := b.subscribers[topic]
+	if !exists {
+		return []net.Conn{}
+	}
+	return subs
+}
+
+func (b *Broker) add(topic string, conn net.Conn) {
+	b.l.Lock()
+	defer b.l.Unlock()
+
+	subs, exists := b.subscribers[topic]
+	if !exists {
+	}
+
+	for _, subConn := range subs {
+		if subConn == conn {
+			return
+		}
+
+		b.subscribers[topic] = append(subs, subConn)
+	}
+
+	b.subscribers[topic] = []net.Conn{conn}
+}
+
+func (b *Broker) removeFromTopic(topic string, conn net.Conn) {
+	b.l.Lock()
+	defer b.l.Unlock()
+
+	conns, exists := b.subscribers[topic]
+	if !exists {
+		return
+	}
+
+	// FIXME ugly duplication because of locking
+	i := indexOf(conns, conn)
+	if i < 0 {
+		return
+	}
+
+	// from https://github.com/golang/go/wiki/SliceTricks
+	copy(conns[i:], conns[i+1:])
+	conns[len(conns)-1] = nil
+	conns = conns[:len(conns)-1]
+
+	if len(conns) == 0 {
+		delete(b.subscribers, topic)
+	} else {
+		b.subscribers[topic] = conns
+	}
+
 }
 
 // parameters are the topics split on "/"
@@ -118,112 +209,6 @@ func topicsMatch(t1, t2 []string) bool {
 		}
 	}
 	return true
-}
-
-type subscriberMap struct {
-	l sync.RWMutex
-	m map[string][]net.Conn
-}
-
-func newSubscriberMap() *subscriberMap {
-	return &subscriberMap{
-		m: make(map[string][]net.Conn),
-	}
-}
-
-func (d *subscriberMap) keys() []string {
-	d.l.RLock()
-	defer d.l.RUnlock()
-
-	i := 0
-	res := make([]string, len(d.m))
-	for key := range d.m {
-		res[i] = key
-		i++
-	}
-
-	return res
-}
-
-func (d *subscriberMap) get(topic string) []net.Conn {
-	d.l.RLock()
-	defer d.l.RUnlock()
-
-	subs, exists := d.m[topic]
-	if !exists {
-		return []net.Conn{}
-	}
-	return subs
-}
-
-func (d *subscriberMap) add(topic string, conn net.Conn) {
-	d.l.Lock()
-	defer d.l.Unlock()
-
-	subs, exists := d.m[topic]
-	if !exists {
-	}
-
-	for _, subConn := range subs {
-		if subConn == conn {
-			return
-		}
-
-		d.m[topic] = append(subs, subConn)
-	}
-
-	d.m[topic] = []net.Conn{conn}
-}
-
-func (d *subscriberMap) remove(conn net.Conn) {
-	d.l.Lock()
-	defer d.l.Unlock()
-
-	for topic, conns := range d.m {
-		i := indexOf(conns, conn)
-		if i < 0 {
-			continue
-		}
-
-		// from https://github.com/golang/go/wiki/SliceTricks
-		copy(conns[i:], conns[i+1:])
-		conns[len(conns)-1] = nil
-		conns = conns[:len(conns)-1]
-
-		if len(conns) == 0 {
-			delete(d.m, topic)
-		} else {
-			d.m[topic] = conns
-		}
-	}
-}
-
-func (d *subscriberMap) removeFromTopic(topic string, conn net.Conn) {
-	d.l.Lock()
-	defer d.l.Unlock()
-
-	conns, exists := d.m[topic]
-	if !exists {
-		return
-	}
-
-	// FIXME ugly duplication because of locking
-	i := indexOf(conns, conn)
-	if i < 0 {
-		return
-	}
-
-	// from https://github.com/golang/go/wiki/SliceTricks
-	copy(conns[i:], conns[i+1:])
-	conns[len(conns)-1] = nil
-	conns = conns[:len(conns)-1]
-
-	if len(conns) == 0 {
-		delete(d.m, topic)
-	} else {
-		d.m[topic] = conns
-	}
-
 }
 
 func indexOf(conns []net.Conn, conn net.Conn) int {
