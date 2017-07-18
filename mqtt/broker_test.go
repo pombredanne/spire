@@ -3,6 +3,7 @@ package mqtt_test
 import (
 	"encoding/json"
 	"net"
+	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
@@ -32,6 +33,9 @@ var _ = Describe("Broker", func() {
 			subResponse, err = packets.ReadPacket(subscriberConn)
 			Expect(err).NotTo(HaveOccurred())
 		})
+		AfterEach(func() {
+			brokerConn.Close()
+		})
 		It("responds with SUBACK", func() {
 			subAckPkg, isSubAck := subResponse.(*packets.SubackPacket)
 			Expect(isSubAck).To(BeTrue())
@@ -60,6 +64,25 @@ var _ = Describe("Broker", func() {
 				err := json.Unmarshal(pubPkg.Payload, &payload)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(payload["foo"]).To(Equal("bar"))
+			})
+		})
+		Context("publish to a non-matching topic", func() {
+			BeforeEach(func() {
+				payload := map[string]string{"foo": "bar"}
+				pubPkg, err := mqtt.MakePublishPacket("/pylon/2.korhal/up", payload)
+				Expect(err).NotTo(HaveOccurred())
+
+				broker.Publish(pubPkg)
+
+				go func() {
+					time.Sleep(time.Millisecond * 1)
+					brokerConn.Close()
+				}()
+			})
+			It("does not forward the message", func() {
+				pkg, err := packets.ReadPacket(subscriberConn)
+				Expect(err).To(HaveOccurred())
+				Expect(pkg).To(BeNil())
 			})
 		})
 		Context("unsubscribe", func() {

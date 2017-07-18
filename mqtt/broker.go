@@ -61,9 +61,10 @@ func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
 
 // Publish ...
 func (b *Broker) Publish(pkg *packets.PublishPacket) {
+	topics := MatchTopics(pkg.TopicName, b.topics())
 	subs := []net.Conn{}
 
-	for _, t := range b.topics() {
+	for _, t := range topics {
 		subs = append(subs, b.get(t)...)
 	}
 

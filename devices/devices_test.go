@@ -49,13 +49,13 @@ var _ = Describe("Device Message Handlers", func() {
 			Expect(ok).To(BeTrue())
 		})
 		It("adds the device", func() {
-			time.Sleep(time.Microsecond * 10) // gross
+			time.Sleep(time.Millisecond * 1) // gross
 			dev, err := devs.Get("1.marsara")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dev).NotTo(BeNil())
 		})
 		It("sets 'up' state on the device", func() {
-			time.Sleep(time.Microsecond * 10) // gross
+			time.Sleep(time.Millisecond * 1) // gross
 			dev, err := devs.Get("1.marsara")
 			Expect(err).NotTo(HaveOccurred())
 
@@ -80,8 +80,11 @@ var _ = Describe("Device Message Handlers", func() {
 			})
 			Context("reconnect", func() {
 				BeforeEach(func() {
-					devMsgHandler = devices.NewMessageHandler(state, mqtt.NewBroker())
 					server, client = net.Pipe()
+
+					go func() {
+						devMsgHandler.HandleConnection(server)
+					}()
 
 					go func() {
 						connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
@@ -89,15 +92,13 @@ var _ = Describe("Device Message Handlers", func() {
 						Expect(connPkg.Write(client)).NotTo(HaveOccurred())
 					}()
 
-					done = make(chan bool)
-					go func() {
-						devMsgHandler.HandleConnection(server)
-						done <- true
-					}()
-
 					var err error
 					response, err = packets.ReadPacket(client)
 					Expect(err).NotTo(HaveOccurred())
+				})
+				It("responds with CONNACK", func() {
+					_, isConnAck := response.(*packets.ConnackPacket)
+					Expect(isConnAck).To(BeTrue())
 				})
 			})
 		})
