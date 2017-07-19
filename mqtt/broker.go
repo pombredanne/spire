@@ -31,7 +31,7 @@ func (b *Broker) HandleConnection(conn net.Conn) {
 	}
 
 	for {
-		ca, err := packets.ReadPacket(conn)
+		pkg, err := packets.ReadPacket(conn)
 		if err != nil {
 			if err != io.EOF {
 				log.Println(err)
@@ -41,16 +41,18 @@ func (b *Broker) HandleConnection(conn net.Conn) {
 			return
 		}
 
-		switch ca := ca.(type) {
+		switch p := pkg.(type) {
 		case *packets.PublishPacket:
-			b.Publish(ca)
+			b.Publish(p)
 		case *packets.SubscribePacket:
-			b.Subscribe(ca, conn)
+			b.Subscribe(p, conn)
 		case *packets.UnsubscribePacket:
-			b.Unsubscribe(ca, conn)
+			b.Unsubscribe(p, conn)
 		default:
 			b.Remove(conn)
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				log.Println(err)
+			}
 			return
 		}
 	}

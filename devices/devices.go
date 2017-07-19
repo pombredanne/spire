@@ -1,7 +1,6 @@
 package devices
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -22,7 +21,7 @@ type State struct {
 func NewState() *State {
 	return &State{
 		FormationState: newSyncMap(),
-		Devices:        NewDeviceMap(),
+		Devices:        newDeviceMap(),
 	}
 }
 
@@ -61,29 +60,28 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 				log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
 			}
 
-			if err := conn.Close(); err != nil {
-				log.Println(err)
-			}
-
-			if err := h.DeviceDisconnected(deviceName); err != nil {
+			if err := h.DeviceDisconnected(deviceName, conn); err != nil {
 				log.Println(err)
 			}
 			return
 		}
 
 		switch ca := ca.(type) {
-		case *packets.DisconnectPacket:
-			if err := conn.Close(); err != nil {
-				log.Println(err)
-			}
-			if err := h.DeviceDisconnected(deviceName); err != nil {
-				log.Println(err)
-			}
-			return
 		case *packets.PublishPacket:
 			if err := h.dispatch(deviceName, ca); err != nil {
 				log.Println(err)
 			}
+
+			h.broker.Publish(ca)
+		case *packets.SubscribePacket:
+			h.broker.Subscribe(ca, conn)
+		case *packets.UnsubscribePacket:
+			h.broker.Unsubscribe(ca, conn)
+		case *packets.DisconnectPacket:
+			if err := h.DeviceDisconnected(deviceName, conn); err != nil {
+				log.Println(err)
+			}
+			return
 		default:
 			log.Println("ignoring unsupported message from", deviceName)
 		}
@@ -98,7 +96,13 @@ func (h *MessageHandler) DeviceConnected(deviceName string, conn net.Conn) (err 
 }
 
 // DeviceDisconnected ...
-func (h *MessageHandler) DeviceDisconnected(deviceName string) (err error) {
+func (h *MessageHandler) DeviceDisconnected(deviceName string, conn net.Conn) (err error) {
+	h.broker.Remove(conn)
+
+	if err := conn.Close(); err != nil {
+		log.Println(err)
+	}
+
 	dev, err := h.state.Devices.Get(deviceName)
 	if err != nil {
 		return
@@ -109,19 +113,15 @@ func (h *MessageHandler) DeviceDisconnected(deviceName string) (err error) {
 }
 
 func (h *MessageHandler) dispatch(deviceName string, msg *packets.PublishPacket) error {
-	if msg.Qos > 0 {
-		panic("QoS > 0 is not supported")
-	}
-
 	parts := strings.Split(msg.TopicName, "/")
 	if len(parts) < 4 || parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName {
-		return fmt.Errorf("invalid message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
+		return nil
 	}
 
 	switch parts[3] {
 	case "ping":
 		return HandlePing(deviceName, msg.TopicName, msg.Payload, h.state, h.broker)
 	default:
-		return fmt.Errorf("unsupported message received from %s topic: %s payload: %s", deviceName, msg.TopicName, string(msg.Payload))
+		return nil
 	}
 }
