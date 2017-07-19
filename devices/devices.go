@@ -11,31 +11,17 @@ import (
 	"github.com/superscale/spire/mqtt"
 )
 
-// State is a crappy name
-type State struct {
-	FormationState *syncMap
-	Devices        *DeviceMap
-}
-
-// NewState ...
-func NewState() *State {
-	return &State{
-		FormationState: newSyncMap(),
-		Devices:        newDeviceMap(),
-	}
-}
-
 // MessageHandler ...
 type MessageHandler struct {
-	state  *State
-	broker *mqtt.Broker
+	broker     *mqtt.Broker
+	formations formationMap
 }
 
 // NewMessageHandler ...
-func NewMessageHandler(state *State, broker *mqtt.Broker) *MessageHandler {
+func NewMessageHandler(broker *mqtt.Broker) *MessageHandler {
 	return &MessageHandler{
-		state:  state,
-		broker: broker,
+		broker:     broker,
+		formations: make(formationMap),
 	}
 }
 
@@ -49,9 +35,12 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 	}
 
 	deviceName := connectPkg.ClientIdentifier
-	if err := h.DeviceConnected(deviceName, conn); err != nil {
-		log.Println(err)
+	formationID := connectPkg.Username
+	if len(formationID) == 0 {
+		formationID = "00000000-0000-0000-0000-000000000000"
 	}
+
+	h.deviceConnected(formationID, deviceName, conn)
 
 	for {
 		ca, err := packets.ReadPacket(conn)
@@ -60,27 +49,20 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 				log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
 			}
 
-			if err := h.DeviceDisconnected(deviceName, conn); err != nil {
-				log.Println(err)
-			}
+			h.deviceDisconnected(formationID, deviceName, conn)
 			return
 		}
 
 		switch ca := ca.(type) {
 		case *packets.PublishPacket:
-			if err := h.dispatch(deviceName, ca); err != nil {
-				log.Println(err)
-			}
-
+			h.dispatch(formationID, deviceName, ca)
 			h.broker.Publish(ca)
 		case *packets.SubscribePacket:
 			h.broker.Subscribe(ca, conn)
 		case *packets.UnsubscribePacket:
 			h.broker.Unsubscribe(ca, conn)
 		case *packets.DisconnectPacket:
-			if err := h.DeviceDisconnected(deviceName, conn); err != nil {
-				log.Println(err)
-			}
+			h.deviceDisconnected(formationID, deviceName, conn)
 			return
 		default:
 			log.Println("ignoring unsupported message from", deviceName)
@@ -88,40 +70,39 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 	}
 }
 
-// DeviceConnected ...
-func (h *MessageHandler) DeviceConnected(deviceName string, conn net.Conn) (err error) {
-	dev := h.state.Devices.Add(deviceName, conn)
-	dev.PutState("up", map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()})
-	return
+// GetDeviceState only exists to observe state changes in tests :(
+func (h *MessageHandler) GetDeviceState(formationID, deviceName, key string) interface{} {
+	return h.formations.getDeviceState(formationID, deviceName, key)
 }
 
-// DeviceDisconnected ...
-func (h *MessageHandler) DeviceDisconnected(deviceName string, conn net.Conn) (err error) {
+func (h *MessageHandler) deviceConnected(formationID, deviceName string, conn net.Conn) {
+	h.formations.putDeviceState(formationID, deviceName, "up", map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()})
+}
+
+func (h *MessageHandler) deviceDisconnected(formationID, deviceName string, conn net.Conn) {
 	h.broker.Remove(conn)
 
 	if err := conn.Close(); err != nil {
 		log.Println(err)
 	}
 
-	dev, err := h.state.Devices.Get(deviceName)
-	if err != nil {
+	h.formations.putDeviceState(formationID, deviceName, "up", map[string]interface{}{"state": "down", "timestamp": time.Now().Unix()})
+}
+
+func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.PublishPacket) {
+	parts := strings.Split(msg.TopicName, "/")
+	if len(parts) < 4 || parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName {
 		return
 	}
 
-	dev.PutState("up", map[string]interface{}{"state": "down", "timestamp": time.Now().Unix()})
-	return
-}
-
-func (h *MessageHandler) dispatch(deviceName string, msg *packets.PublishPacket) error {
-	parts := strings.Split(msg.TopicName, "/")
-	if len(parts) < 4 || parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName {
-		return nil
-	}
+	formation := h.formations[formationID]
 
 	switch parts[3] {
 	case "ping":
-		return HandlePing(deviceName, msg.TopicName, msg.Payload, h.state, h.broker)
+		if err := HandlePing(msg.TopicName, msg.Payload, &formation, h.broker); err != nil {
+			log.Println(err)
+		}
 	default:
-		return nil
+		return
 	}
 }

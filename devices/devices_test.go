@@ -13,31 +13,30 @@ import (
 
 var _ = Describe("Device Message Handlers", func() {
 
-	var state *devices.State
-	var devs *devices.DeviceMap
 	var devMsgHandler *devices.MessageHandler
 	var server net.Conn
 	var client net.Conn
 	var response packets.ControlPacket
 	var done chan bool
 
-	BeforeEach(func() {
-		state = devices.NewState()
-		devs = state.Devices
-		devMsgHandler = devices.NewMessageHandler(state, mqtt.NewBroker())
-		server, client = net.Pipe()
+	var formationID = "00000000-0000-0000-0000-000000000001"
+	var deviceName = "1.marsara"
 
-		go func() {
-			connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-			connPkg.ClientIdentifier = "1.marsara"
-			Expect(connPkg.Write(client)).NotTo(HaveOccurred())
-		}()
+	BeforeEach(func() {
+		devMsgHandler = devices.NewMessageHandler(mqtt.NewBroker())
+		server, client = net.Pipe()
 
 		done = make(chan bool)
 		go func() {
 			devMsgHandler.HandleConnection(server)
 			done <- true
 		}()
+
+		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+		connPkg.ClientIdentifier = deviceName
+		connPkg.Username = formationID
+		connPkg.UsernameFlag = true
+		Expect(connPkg.Write(client)).NotTo(HaveOccurred())
 
 		var err error
 		response, err = packets.ReadPacket(client)
@@ -48,19 +47,10 @@ var _ = Describe("Device Message Handlers", func() {
 			_, ok := response.(*packets.ConnackPacket)
 			Expect(ok).To(BeTrue())
 		})
-		It("adds the device", func() {
-			time.Sleep(time.Millisecond * 1) // gross
-			dev, err := devs.Get("1.marsara")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(dev).NotTo(BeNil())
-		})
 		It("sets 'up' state on the device", func() {
 			time.Sleep(time.Millisecond * 1) // gross
-			dev, err := devs.Get("1.marsara")
-			Expect(err).NotTo(HaveOccurred())
-
-			upState, exists := dev.GetState("up")
-			Expect(exists).To(BeTrue())
+			upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
+			Expect(upState).NotTo(BeNil())
 			Expect(upState.(map[string]interface{})["state"]).To(Equal("up"))
 		})
 	})
@@ -69,13 +59,11 @@ var _ = Describe("Device Message Handlers", func() {
 			BeforeEach(func() {
 				pkg := packets.NewControlPacket(packets.Disconnect)
 				Expect(pkg.Write(client)).NotTo(HaveOccurred())
+				<-done
 			})
 			It("updates 'up' state on the device", func() {
-				dev, err := devs.Get("1.marsara")
-				Expect(err).NotTo(HaveOccurred())
-
-				upState, exists := dev.GetState("up")
-				Expect(exists).To(BeTrue())
+				upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
+				Expect(upState).NotTo(BeNil())
 				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
 			})
 			Context("reconnect", func() {
@@ -84,11 +72,14 @@ var _ = Describe("Device Message Handlers", func() {
 
 					go func() {
 						devMsgHandler.HandleConnection(server)
+						done <- true
 					}()
 
 					go func() {
 						connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-						connPkg.ClientIdentifier = "1.marsara"
+						connPkg.ClientIdentifier = deviceName
+						connPkg.Username = formationID
+						connPkg.UsernameFlag = true
 						Expect(connPkg.Write(client)).NotTo(HaveOccurred())
 					}()
 
@@ -108,11 +99,8 @@ var _ = Describe("Device Message Handlers", func() {
 				<-done
 			})
 			It("updates 'up' state on the device", func() {
-				dev, err := devs.Get("1.marsara")
-				Expect(err).NotTo(HaveOccurred())
-
-				upState, exists := dev.GetState("up")
-				Expect(exists).To(BeTrue())
+				upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
+				Expect(upState).NotTo(BeNil())
 				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
 			})
 		})
