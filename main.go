@@ -16,11 +16,9 @@ func main() {
 		panic(err)
 	}
 
-	state := devices.NewState()
 	broker := mqtt.NewBroker()
 
-	devMsgHandler := devices.NewMessageHandler(state, broker)
-
+	devMsgHandler := devices.NewMessageHandler(broker)
 	devicesServer := service.NewServer(service.Config.DevicesBind, devMsgHandler.HandleConnection)
 	devicesServer.Run()
 
