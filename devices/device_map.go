@@ -51,8 +51,7 @@ type DeviceMap struct {
 	m map[string]*Device
 }
 
-// NewDeviceMap ...
-func NewDeviceMap() *DeviceMap {
+func newDeviceMap() *DeviceMap {
 	return &DeviceMap{
 		m: make(map[string]*Device),
 	}
@@ -87,29 +86,6 @@ func (d *DeviceMap) Add(name string, conn net.Conn) *Device {
 	dev = newDevice(name, conn)
 	d.m[name] = dev
 	return dev
-}
-
-// Send ...
-func (d *DeviceMap) Send(name, topic string, payload []byte) error {
-	dev, err := d.Get(name)
-	if err != nil {
-		return err
-	}
-
-	return dev.Send(topic, payload)
-}
-
-// Broadcast ...
-func (d *DeviceMap) Broadcast(topic string, payload []byte) error {
-	d.l.RLock()
-	defer d.l.RUnlock()
-
-	for _, dev := range d.m {
-		if err := dev.Send(topic, payload); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 type syncMap struct {
