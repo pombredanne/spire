@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"io"
 	"log"
 	"net"
 	"strings"
@@ -19,6 +20,39 @@ type Broker struct {
 func NewBroker() *Broker {
 	return &Broker{
 		subscribers: make(map[string][]net.Conn),
+	}
+}
+
+// HandleConnection ...
+func (b *Broker) HandleConnection(conn net.Conn) {
+	if _, err := Connect(conn); err != nil {
+		log.Println(err)
+		return
+	}
+
+	for {
+		ca, err := packets.ReadPacket(conn)
+		if err != nil {
+			if err != io.EOF {
+				log.Println(err)
+				b.Remove(conn)
+				conn.Close()
+			}
+			return
+		}
+
+		switch ca := ca.(type) {
+		case *packets.PublishPacket:
+			b.Publish(ca)
+		case *packets.SubscribePacket:
+			b.Subscribe(ca, conn)
+		case *packets.UnsubscribePacket:
+			b.Unsubscribe(ca, conn)
+		default:
+			b.Remove(conn)
+			conn.Close()
+			return
+		}
 	}
 }
 
@@ -69,15 +103,11 @@ func (b *Broker) Publish(pkg *packets.PublishPacket) {
 	}
 
 	for _, s := range subs {
-		// we might want to limit concurrency with a worker pool
-		go func(conn net.Conn) {
-			err := pkg.Write(conn)
-			if err != nil {
-				log.Println(err)
-			}
-		}(s)
+		err := pkg.Write(s)
+		if err != nil {
+			log.Println(err)
+		}
 	}
-	return
 }
 
 // Remove ...

@@ -49,7 +49,7 @@ var _ = Describe("Broker", func() {
 				pubPkg, err := mqtt.MakePublishPacket("/pylon/1.marsara/up", payload)
 				Expect(err).NotTo(HaveOccurred())
 
-				broker.Publish(pubPkg)
+				go broker.Publish(pubPkg)
 
 				pkg, err = packets.ReadPacket(subscriberConn)
 				Expect(err).NotTo(HaveOccurred())
