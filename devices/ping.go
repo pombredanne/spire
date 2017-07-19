@@ -7,7 +7,7 @@ import (
 )
 
 // HandlePing ...
-func HandlePing(deviceName, topic string, payload []byte, state *State, broker *mqtt.Broker) error {
+func HandlePing(topic string, payload []byte, formation *formationS, broker *mqtt.Broker) error {
 	log.Println("It's a ping!")
 	return nil
 }
