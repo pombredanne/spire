@@ -86,6 +86,9 @@ func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
 
 // Unsubscribe removes the connection from the list of subscribers to the topic
 func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
+	b.l.Lock()
+	defer b.l.Unlock()
+
 	for _, topic := range pkg.Topics {
 		b.removeFromTopic(topic, conn)
 	}
@@ -117,22 +120,8 @@ func (b *Broker) Remove(conn net.Conn) {
 	b.l.Lock()
 	defer b.l.Unlock()
 
-	for topic, conns := range b.subscribers {
-		i := indexOf(conns, conn)
-		if i < 0 {
-			continue
-		}
-
-		// from https://github.com/golang/go/wiki/SliceTricks
-		copy(conns[i:], conns[i+1:])
-		conns[len(conns)-1] = nil
-		conns = conns[:len(conns)-1]
-
-		if len(conns) == 0 {
-			delete(b.subscribers, topic)
-		} else {
-			b.subscribers[topic] = conns
-		}
+	for topic := range b.subscribers {
+		b.removeFromTopic(topic, conn)
 	}
 }
 
@@ -193,16 +182,13 @@ func (b *Broker) add(topic string, conn net.Conn) {
 	b.subscribers[topic] = []net.Conn{conn}
 }
 
+// ACHTUNG: caller must acquire and release b.l
 func (b *Broker) removeFromTopic(topic string, conn net.Conn) {
-	b.l.Lock()
-	defer b.l.Unlock()
-
 	conns, exists := b.subscribers[topic]
 	if !exists {
 		return
 	}
 
-	// FIXME ugly duplication because of locking
 	i := indexOf(conns, conn)
 	if i < 0 {
 		return
@@ -218,7 +204,6 @@ func (b *Broker) removeFromTopic(topic string, conn net.Conn) {
 	} else {
 		b.subscribers[topic] = conns
 	}
-
 }
 
 // parameters are the topics split on "/"
