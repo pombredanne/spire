@@ -29,7 +29,7 @@ func NewMessageHandler(broker *mqtt.Broker) *MessageHandler {
 func (h *MessageHandler) HandleConnection(conn net.Conn) {
 	connectPkg, err := mqtt.Connect(conn)
 	if err != nil {
-		log.Println("error while reading packet:", err, "closing connection")
+		log.Println("error while reading packet:", err, ". closing connection")
 		conn.Close()
 		return
 	}
@@ -37,7 +37,9 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 	deviceName := connectPkg.ClientIdentifier
 	formationID := connectPkg.Username
 	if len(formationID) == 0 {
-		formationID = "00000000-0000-0000-0000-000000000000"
+		log.Println("CONNECT packet from", conn.RemoteAddr(), "is missing formation ID. closing connection")
+		conn.Close()
+		return
 	}
 
 	h.deviceConnected(formationID, deviceName, conn)
