@@ -5,9 +5,9 @@ import (
 	"os/signal"
 
 	"github.com/caarlos0/env"
-	"github.com/superscale/spire/service"
 	"github.com/superscale/spire/devices"
-	"github.com/superscale/spire/control"
+	"github.com/superscale/spire/mqtt"
+	"github.com/superscale/spire/service"
 )
 
 func main() {
@@ -16,14 +16,13 @@ func main() {
 		panic(err)
 	}
 
-	devs := devices.NewDeviceMap()
-	devMsgHandler := devices.NewMessageHandler(devs)
+	broker := mqtt.NewBroker()
 
+	devMsgHandler := devices.NewMessageHandler(broker)
 	devicesServer := service.NewServer(service.Config.DevicesBind, devMsgHandler.HandleConnection)
 	devicesServer.Run()
 
-	ctrlMsgHandler := control.NewMessageHandler(devs)
-	controlServer := service.NewServer(service.Config.ServicesBind, ctrlMsgHandler.HandleConnection)
+	controlServer := service.NewServer(service.Config.ControlBind, broker.HandleConnection)
 	controlServer.Run()
 
 	quit := make(chan os.Signal)

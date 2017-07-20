@@ -15,5 +15,5 @@ var _ = BeforeSuite(func() {
 // TestHandlers ...
 func TestHandlers(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Spire Handlers Suite")
+	RunSpecs(t, "Spire Devices Suite")
 }

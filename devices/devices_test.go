@@ -2,38 +2,41 @@ package devices_test
 
 import (
 	"net"
+	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/devices"
+	"github.com/superscale/spire/mqtt"
 )
 
 var _ = Describe("Device Message Handlers", func() {
 
-	var devs *devices.DeviceMap
 	var devMsgHandler *devices.MessageHandler
 	var server net.Conn
 	var client net.Conn
 	var response packets.ControlPacket
 	var done chan bool
 
-	BeforeEach(func() {
-		devs = devices.NewDeviceMap()
-		devMsgHandler = devices.NewMessageHandler(devs)
-		server, client = net.Pipe()
+	var formationID = "00000000-0000-0000-0000-000000000001"
+	var deviceName = "1.marsara"
 
-		go func() {
-			connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-			connPkg.ClientIdentifier = "1.marsara"
-			Expect(connPkg.Write(client)).NotTo(HaveOccurred())
-		}()
+	BeforeEach(func() {
+		devMsgHandler = devices.NewMessageHandler(mqtt.NewBroker())
+		server, client = net.Pipe()
 
 		done = make(chan bool)
 		go func() {
 			devMsgHandler.HandleConnection(server)
 			done <- true
 		}()
+
+		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+		connPkg.ClientIdentifier = deviceName
+		connPkg.Username = formationID
+		connPkg.UsernameFlag = true
+		Expect(connPkg.Write(client)).NotTo(HaveOccurred())
 
 		var err error
 		response, err = packets.ReadPacket(client)
@@ -44,17 +47,10 @@ var _ = Describe("Device Message Handlers", func() {
 			_, ok := response.(*packets.ConnackPacket)
 			Expect(ok).To(BeTrue())
 		})
-		It("adds the device", func() {
-			dev, err := devs.Get("1.marsara")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(dev).NotTo(BeNil())
-		})
 		It("sets 'up' state on the device", func() {
-			dev, err := devs.Get("1.marsara")
-			Expect(err).NotTo(HaveOccurred())
-
-			upState, exists := dev.State.Get("up")
-			Expect(exists).To(BeTrue())
+			time.Sleep(time.Millisecond * 1) // gross
+			upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
+			Expect(upState).NotTo(BeNil())
 			Expect(upState.(map[string]interface{})["state"]).To(Equal("up"))
 		})
 	})
@@ -63,35 +59,37 @@ var _ = Describe("Device Message Handlers", func() {
 			BeforeEach(func() {
 				pkg := packets.NewControlPacket(packets.Disconnect)
 				Expect(pkg.Write(client)).NotTo(HaveOccurred())
+				<-done
 			})
 			It("updates 'up' state on the device", func() {
-				dev, err := devs.Get("1.marsara")
-				Expect(err).NotTo(HaveOccurred())
-
-				upState, exists := dev.State.Get("up")
-				Expect(exists).To(BeTrue())
+				upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
+				Expect(upState).NotTo(BeNil())
 				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
 			})
 			Context("reconnect", func() {
 				BeforeEach(func() {
-					devMsgHandler = devices.NewMessageHandler(devs)
 					server, client = net.Pipe()
 
-					go func() {
-						connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-						connPkg.ClientIdentifier = "1.marsara"
-						Expect(connPkg.Write(client)).NotTo(HaveOccurred())
-					}()
-
-					done = make(chan bool)
 					go func() {
 						devMsgHandler.HandleConnection(server)
 						done <- true
 					}()
 
+					go func() {
+						connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+						connPkg.ClientIdentifier = deviceName
+						connPkg.Username = formationID
+						connPkg.UsernameFlag = true
+						Expect(connPkg.Write(client)).NotTo(HaveOccurred())
+					}()
+
 					var err error
 					response, err = packets.ReadPacket(client)
 					Expect(err).NotTo(HaveOccurred())
+				})
+				It("responds with CONNACK", func() {
+					_, isConnAck := response.(*packets.ConnackPacket)
+					Expect(isConnAck).To(BeTrue())
 				})
 			})
 		})
@@ -101,11 +99,8 @@ var _ = Describe("Device Message Handlers", func() {
 				<-done
 			})
 			It("updates 'up' state on the device", func() {
-				dev, err := devs.Get("1.marsara")
-				Expect(err).NotTo(HaveOccurred())
-
-				upState, exists := dev.State.Get("up")
-				Expect(exists).To(BeTrue())
+				upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
+				Expect(upState).NotTo(BeNil())
 				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
 			})
 		})

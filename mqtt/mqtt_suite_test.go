@@ -1,7 +1,6 @@
-package control_test
+package mqtt_test
 
 import (
-
 	"testing"
 
 	. "github.com/onsi/ginkgo"
@@ -13,8 +12,9 @@ var _ = BeforeSuite(func() {
 	service.Config.Environment = "test"
 })
 
-// TestControl ...
-func TestControl(t *testing.T) {
+// TestHandlers ...
+func TestHandlers(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Spire Control Suite")
+	RunSpecs(t, "Spire MQTT Suite")
 }
+
