@@ -14,14 +14,14 @@ import (
 // MessageHandler ...
 type MessageHandler struct {
 	broker     *mqtt.Broker
-	formations formationMap
+	formations *formationMap
 }
 
 // NewMessageHandler ...
 func NewMessageHandler(broker *mqtt.Broker) *MessageHandler {
 	return &MessageHandler{
 		broker:     broker,
-		formations: make(formationMap),
+		formations: newFormationMap(),
 	}
 }
 
@@ -95,11 +95,16 @@ func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.P
 		return
 	}
 
-	formation := h.formations[formationID]
+	formation := h.formations.get(formationID)
+	// should never happen since the formation state is initialized when a device connects
+	if formation == nil {
+		log.Println("no formation state found for formationID", formationID)
+		return
+	}
 
 	switch parts[3] {
 	case "ping":
-		if err := HandlePing(msg.TopicName, msg.Payload, &formation, h.broker); err != nil {
+		if err := HandlePing(msg.TopicName, msg.Payload, formation, h.broker); err != nil {
 			log.Println(err)
 		}
 	default:

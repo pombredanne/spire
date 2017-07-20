@@ -1,6 +1,6 @@
 package devices
 
-// TODO figure out locking
+import "sync"
 
 type stateMap map[string]interface{}
 
@@ -12,25 +12,46 @@ type formationS struct {
 	devices deviceStateMap
 }
 
-type formationMap map[string]formationS
+type formationMap struct {
+	m map[string]*formationS
+	l sync.RWMutex
+}
 
-func (fm formationMap) putState(formationID, key string, value interface{}) {
-	formation, exists := fm[formationID]
+func newFormationMap() *formationMap {
+	return &formationMap{
+		m: make(map[string]*formationS),
+	}
+}
+
+func (fm *formationMap) get(formationID string) *formationS {
+	fm.l.RLock()
+	defer fm.l.RUnlock()
+	return fm.m[formationID]
+}
+
+func (fm *formationMap) putState(formationID, key string, value interface{}) {
+	fm.l.Lock()
+	defer fm.l.Unlock()
+
+	formation, exists := fm.m[formationID]
 
 	if exists {
 		formation.state[key] = value
 	} else {
-		formation = formationS{
+		formation = &formationS{
 			state:   stateMap{key: value},
 			devices: make(deviceStateMap),
 		}
 
-		fm[formationID] = formation
+		fm.m[formationID] = formation
 	}
 }
 
-func (fm formationMap) getState(formationID, key string) interface{} {
-	formation, exists := fm[formationID]
+func (fm *formationMap) getState(formationID, key string) interface{} {
+	fm.l.RLock()
+	defer fm.l.RUnlock()
+
+	formation, exists := fm.m[formationID]
 
 	if !exists {
 		return nil
@@ -39,12 +60,15 @@ func (fm formationMap) getState(formationID, key string) interface{} {
 	return formation.state[key]
 }
 
-func (fm formationMap) putDeviceState(formationID, deviceName, key string, value interface{}) {
-	formation, fExists := fm[formationID]
+func (fm *formationMap) putDeviceState(formationID, deviceName, key string, value interface{}) {
+	fm.l.Lock()
+	defer fm.l.Unlock()
+
+	formation, fExists := fm.m[formationID]
 
 	if !fExists {
-		formation = formationS{make(stateMap), make(deviceStateMap)}
-		fm[formationID] = formation
+		formation = &formationS{make(stateMap), make(deviceStateMap)}
+		fm.m[formationID] = formation
 	}
 
 	deviceState, dExists := formation.devices[deviceName]
@@ -56,8 +80,11 @@ func (fm formationMap) putDeviceState(formationID, deviceName, key string, value
 	deviceState[key] = value
 }
 
-func (fm formationMap) getDeviceState(formationID, deviceName, key string) interface{} {
-	formation, fExists := fm[formationID]
+func (fm *formationMap) getDeviceState(formationID, deviceName, key string) interface{} {
+	fm.l.RLock()
+	defer fm.l.RUnlock()
+
+	formation, fExists := fm.m[formationID]
 	if !fExists {
 		return nil
 	}
