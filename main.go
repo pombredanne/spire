@@ -16,6 +16,8 @@ func main() {
 		panic(err)
 	}
 
+	service.InitBugsnag()
+
 	broker := mqtt.NewBroker()
 
 	devMsgHandler := devices.NewMessageHandler(broker)

@@ -53,6 +53,12 @@ var _ = Describe("Device Message Handlers", func() {
 			Expect(upState).NotTo(BeNil())
 			Expect(upState.(map[string]interface{})["state"]).To(Equal("up"))
 		})
+		It("fetches device info and adds 'device_os' to device state", func() {
+			time.Sleep(time.Millisecond * 1) // gross
+			deviceInfoState := devMsgHandler.GetDeviceState(formationID, deviceName, "device_info")
+			Expect(deviceInfoState).NotTo(BeNil())
+			Expect(deviceInfoState.(map[string]interface{})["device_os"]).To(Equal("tplink-archer-c7-lingrush-44"))
+		})
 	})
 	Context("disconnect", func() {
 		Context("by sending DISCONNECT", func() {
