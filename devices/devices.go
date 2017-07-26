@@ -14,14 +14,14 @@ import (
 // MessageHandler ...
 type MessageHandler struct {
 	broker     *mqtt.Broker
-	formations *formationMap
+	formations *FormationMap
 }
 
 // NewMessageHandler ...
 func NewMessageHandler(broker *mqtt.Broker) *MessageHandler {
 	return &MessageHandler{
 		broker:     broker,
-		formations: newFormationMap(),
+		formations: NewFormationMap(),
 	}
 }
 
@@ -74,11 +74,11 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 
 // GetDeviceState only exists to observe state changes in tests :(
 func (h *MessageHandler) GetDeviceState(formationID, deviceName, key string) interface{} {
-	return h.formations.getDeviceState(formationID, deviceName, key)
+	return h.formations.GetDeviceState(formationID, deviceName, key)
 }
 
 func (h *MessageHandler) deviceConnected(formationID, deviceName string, conn net.Conn) {
-	h.formations.putDeviceState(formationID, deviceName, "up", map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()})
+	h.formations.PutDeviceState(formationID, deviceName, "up", map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()})
 }
 
 func (h *MessageHandler) deviceDisconnected(formationID, deviceName string, conn net.Conn) {
@@ -88,7 +88,7 @@ func (h *MessageHandler) deviceDisconnected(formationID, deviceName string, conn
 		log.Println(err)
 	}
 
-	h.formations.putDeviceState(formationID, deviceName, "up", map[string]interface{}{"state": "down", "timestamp": time.Now().Unix()})
+	h.formations.PutDeviceState(formationID, deviceName, "up", map[string]interface{}{"state": "down", "timestamp": time.Now().Unix()})
 }
 
 func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.PublishPacket) {
@@ -97,16 +97,9 @@ func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.P
 		return
 	}
 
-	formation := h.formations.get(formationID)
-	// should never happen since the formation state is initialized when a device connects
-	if formation == nil {
-		log.Println("no formation state found for formationID", formationID)
-		return
-	}
-
-	switch parts[3] {
-	case "ping":
-		if err := HandlePing(msg.TopicName, msg.Payload, formation, h.broker); err != nil {
+	switch strings.Join(parts[2:], "/") {
+	case "wan/ping":
+		if err := HandlePing(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker); err != nil {
 			log.Println(err)
 		}
 	default:

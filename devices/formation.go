@@ -12,24 +12,27 @@ type formationS struct {
 	devices deviceStateMap
 }
 
-type formationMap struct {
+// FormationMap ...
+type FormationMap struct {
 	m map[string]*formationS
 	l sync.RWMutex
 }
 
-func newFormationMap() *formationMap {
-	return &formationMap{
+// NewFormationMap ...
+func NewFormationMap() *FormationMap {
+	return &FormationMap{
 		m: make(map[string]*formationS),
 	}
 }
 
-func (fm *formationMap) get(formationID string) *formationS {
+func (fm *FormationMap) get(formationID string) *formationS {
 	fm.l.RLock()
 	defer fm.l.RUnlock()
 	return fm.m[formationID]
 }
 
-func (fm *formationMap) putState(formationID, key string, value interface{}) {
+// PutState ...
+func (fm *FormationMap) PutState(formationID, key string, value interface{}) {
 	fm.l.Lock()
 	defer fm.l.Unlock()
 
@@ -47,7 +50,8 @@ func (fm *formationMap) putState(formationID, key string, value interface{}) {
 	}
 }
 
-func (fm *formationMap) getState(formationID, key string) interface{} {
+// GetState ...
+func (fm *FormationMap) GetState(formationID, key string) interface{} {
 	fm.l.RLock()
 	defer fm.l.RUnlock()
 
@@ -60,7 +64,8 @@ func (fm *formationMap) getState(formationID, key string) interface{} {
 	return formation.state[key]
 }
 
-func (fm *formationMap) putDeviceState(formationID, deviceName, key string, value interface{}) {
+// PutDeviceState ...
+func (fm *FormationMap) PutDeviceState(formationID, deviceName, key string, value interface{}) {
 	fm.l.Lock()
 	defer fm.l.Unlock()
 
@@ -80,7 +85,8 @@ func (fm *formationMap) putDeviceState(formationID, deviceName, key string, valu
 	deviceState[key] = value
 }
 
-func (fm *formationMap) getDeviceState(formationID, deviceName, key string) interface{} {
+// GetDeviceState ...
+func (fm *FormationMap) GetDeviceState(formationID, deviceName, key string) interface{} {
 	fm.l.RLock()
 	defer fm.l.RUnlock()
 
