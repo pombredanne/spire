@@ -1,6 +1,7 @@
 package devices
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,7 +32,7 @@ func NewMessageHandler(broker *mqtt.Broker) *MessageHandler {
 
 // HandleConnection receives a connection from a device and dispatches its messages to the designated handler
 func (h *MessageHandler) HandleConnection(conn net.Conn) {
-	connectPkg, err := mqtt.Connect(conn)
+	connectPkg, err := mqtt.Connect(conn, false)
 	if err != nil {
 		log.Println("error while reading packet:", err, ". closing connection")
 		conn.Close()
@@ -46,12 +47,20 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 		return
 	}
 
-	if err := h.deviceConnected(formationID, deviceName, conn); err != nil {
+	deviceDisconnected, err := h.deviceConnected(formationID, deviceName, conn)
+	if err != nil {
 		log.Println(err)
 		conn.Close()
 		return
 	}
 
+	cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
+	err = cAck.Write(conn)
+
+	h.handleMessages(conn, formationID, deviceName, deviceDisconnected)
+}
+
+func (h *MessageHandler) handleMessages(conn net.Conn, formationID, deviceName string, deviceDisconnected func()) {
 	for {
 		ca, err := packets.ReadPacket(conn)
 		if err != nil {
@@ -59,7 +68,7 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 				log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
 			}
 
-			h.deviceDisconnected(formationID, deviceName, conn)
+			deviceDisconnected()
 			return
 		}
 
@@ -72,7 +81,7 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 		case *packets.UnsubscribePacket:
 			h.broker.Unsubscribe(ca, conn)
 		case *packets.DisconnectPacket:
-			h.deviceDisconnected(formationID, deviceName, conn)
+			deviceDisconnected()
 			return
 		default:
 			log.Println("ignoring unsupported message from", deviceName)
@@ -85,27 +94,57 @@ func (h *MessageHandler) GetDeviceState(formationID, deviceName, key string) int
 	return h.formations.GetDeviceState(formationID, deviceName, key)
 }
 
-func (h *MessageHandler) deviceConnected(formationID, deviceName string, conn net.Conn) error {
+func (h *MessageHandler) deviceConnected(formationID, deviceName string, conn net.Conn) (func(), error) {
 	info, err := fetchDeviceInfo(deviceName)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	deviceOS := getDeviceOS(info)
-
 	h.formations.PutDeviceState(formationID, deviceName, "device_info", map[string]interface{}{"device_os": deviceOS})
-	h.formations.PutDeviceState(formationID, deviceName, "up", map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()})
-	return nil
-}
 
-func (h *MessageHandler) deviceDisconnected(formationID, deviceName string, conn net.Conn) {
-	h.broker.Remove(conn)
+	ctx, cancelFn := context.WithCancel(context.Background())
+	go h.publishUpState(ctx, deviceName)
 
-	if err := conn.Close(); err != nil {
-		log.Println(err)
+	disconnectFn := func() {
+		cancelFn()
+		h.broker.Remove(conn)
+
+		if err := conn.Close(); err != nil {
+			log.Println(err)
+		}
 	}
 
-	h.formations.PutDeviceState(formationID, deviceName, "up", map[string]interface{}{"state": "down", "timestamp": time.Now().Unix()})
+	return disconnectFn, nil
+}
+
+func (h *MessageHandler) publishUpState(ctx context.Context, deviceName string) {
+	upState := map[string]interface{}{
+		"state":     "up",
+		"timestamp": time.Now().Unix(),
+	}
+
+	send := func(state string) {
+		upState["state"] = state
+		pkg, err := mqtt.MakePublishPacket("/armada/"+deviceName+"/up", upState)
+
+		if err != nil {
+			log.Println(err)
+		} else {
+			h.broker.Publish(pkg)
+		}
+	}
+	send("up")
+
+	for {
+		select {
+		case <-ctx.Done():
+			send("down")
+			return
+		case <-time.After(30 * time.Second):
+			send("up")
+		}
+	}
 }
 
 func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.PublishPacket) {

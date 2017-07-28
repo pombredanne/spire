@@ -1,8 +1,8 @@
 package devices_test
 
 import (
+	"encoding/json"
 	"net"
-	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
@@ -14,100 +14,167 @@ import (
 var _ = Describe("Device Message Handlers", func() {
 
 	var devMsgHandler *devices.MessageHandler
-	var server net.Conn
-	var client net.Conn
+	var deviceServer, deviceClient net.Conn
 	var response packets.ControlPacket
-	var done chan bool
+	var broker *mqtt.Broker
+	var handleConnectionReturned chan bool
 
 	var formationID = "00000000-0000-0000-0000-000000000001"
 	var deviceName = "1.marsara"
 
 	BeforeEach(func() {
-		devMsgHandler = devices.NewMessageHandler(mqtt.NewBroker())
-		server, client = net.Pipe()
+		broker = mqtt.NewBroker()
+		devMsgHandler = devices.NewMessageHandler(broker)
+		deviceServer, deviceClient = net.Pipe()
 
-		done = make(chan bool)
+		handleConnectionReturned = make(chan bool)
+	})
+	JustBeforeEach(func() {
 		go func() {
-			devMsgHandler.HandleConnection(server)
-			done <- true
+			devMsgHandler.HandleConnection(deviceServer)
+			handleConnectionReturned <- true
 		}()
 
 		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
 		connPkg.ClientIdentifier = deviceName
 		connPkg.Username = formationID
 		connPkg.UsernameFlag = true
-		Expect(connPkg.Write(client)).NotTo(HaveOccurred())
+		Expect(connPkg.Write(deviceClient)).NotTo(HaveOccurred())
 
 		var err error
-		response, err = packets.ReadPacket(client)
+		response, err = packets.ReadPacket(deviceClient)
 		Expect(err).NotTo(HaveOccurred())
 	})
-	Context("connect", func() {
+	Describe("connect", func() {
 		It("sends CONNACK", func() {
 			_, ok := response.(*packets.ConnackPacket)
 			Expect(ok).To(BeTrue())
 		})
-		It("sets 'up' state on the device", func() {
-			time.Sleep(time.Millisecond * 1) // gross
-			upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
-			Expect(upState).NotTo(BeNil())
-			Expect(upState.(map[string]interface{})["state"]).To(Equal("up"))
-		})
 		It("fetches device info and adds 'device_os' to device state", func() {
-			time.Sleep(time.Millisecond * 1) // gross
 			deviceInfoState := devMsgHandler.GetDeviceState(formationID, deviceName, "device_info")
 			Expect(deviceInfoState).NotTo(BeNil())
 			Expect(deviceInfoState.(map[string]interface{})["device_os"]).To(Equal("tplink-archer-c7-lingrush-44"))
 		})
-	})
-	Context("disconnect", func() {
-		Context("by sending DISCONNECT", func() {
+		Describe("pub/sub", func() {
+			var controlServer, controlClient net.Conn
+
 			BeforeEach(func() {
-				pkg := packets.NewControlPacket(packets.Disconnect)
-				Expect(pkg.Write(client)).NotTo(HaveOccurred())
-				<-done
+				controlServer, controlClient = net.Pipe()
+				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
+				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
+				pkg.Qoss = []byte{0}
+				go broker.Subscribe(pkg, controlServer)
+
+				// read suback
+				_, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
 			})
-			It("updates 'up' state on the device", func() {
-				upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
-				Expect(upState).NotTo(BeNil())
-				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
+			It("publishes an 'up' message for the device", func() {
+				pkg, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
+
+				pubPkg, ok := pkg.(*packets.PublishPacket)
+				Expect(ok).To(BeTrue())
+
+				upState := make(map[string]interface{})
+				err = json.Unmarshal(pubPkg.Payload, &upState)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(upState["state"]).To(Equal("up"))
+			})
+		})
+	})
+	Describe("disconnect", func() {
+		Context("by sending DISCONNECT", func() {
+			var controlServer, controlClient net.Conn
+
+			BeforeEach(func() {
+				controlServer, controlClient = net.Pipe()
+				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
+				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
+				pkg.Qoss = []byte{0}
+				go broker.Subscribe(pkg, controlServer)
+
+				// read suback
+				_, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
+			})
+			It("publishes an 'up' message for the device", func() {
+				dPkg := packets.NewControlPacket(packets.Disconnect)
+				Expect(dPkg.Write(deviceClient)).NotTo(HaveOccurred())
+
+				// read and ignore the "up" state message that was published when the device connected
+				_, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
+
+				pkg, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
+
+				pubPkg, ok := pkg.(*packets.PublishPacket)
+				Expect(ok).To(BeTrue())
+
+				upState := make(map[string]interface{})
+				err = json.Unmarshal(pubPkg.Payload, &upState)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(upState["state"]).To(Equal("down"))
 			})
 			Context("reconnect", func() {
-				BeforeEach(func() {
-					server, client = net.Pipe()
+				It("responds with CONNACK", func() {
+					dPkg := packets.NewControlPacket(packets.Disconnect)
+					Expect(dPkg.Write(deviceClient)).NotTo(HaveOccurred())
+
+					deviceServer, deviceClient = net.Pipe()
 
 					go func() {
-						devMsgHandler.HandleConnection(server)
-						done <- true
+						devMsgHandler.HandleConnection(deviceServer)
 					}()
 
-					go func() {
-						connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-						connPkg.ClientIdentifier = deviceName
-						connPkg.Username = formationID
-						connPkg.UsernameFlag = true
-						Expect(connPkg.Write(client)).NotTo(HaveOccurred())
-					}()
+					connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+					connPkg.ClientIdentifier = deviceName
+					connPkg.Username = formationID
+					connPkg.UsernameFlag = true
+					Expect(connPkg.Write(deviceClient)).NotTo(HaveOccurred())
 
 					var err error
-					response, err = packets.ReadPacket(client)
+					response, err = packets.ReadPacket(deviceClient)
 					Expect(err).NotTo(HaveOccurred())
-				})
-				It("responds with CONNACK", func() {
+
 					_, isConnAck := response.(*packets.ConnackPacket)
 					Expect(isConnAck).To(BeTrue())
 				})
 			})
 		})
 		Context("by closing the connection", func() {
+			var controlServer, controlClient net.Conn
+
 			BeforeEach(func() {
-				Expect(client.Close()).ToNot(HaveOccurred())
-				<-done
+				controlServer, controlClient = net.Pipe()
+				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
+				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
+				pkg.Qoss = []byte{0}
+				go broker.Subscribe(pkg, controlServer)
+
+				// read suback
+				_, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
 			})
-			It("updates 'up' state on the device", func() {
-				upState := devMsgHandler.GetDeviceState(formationID, deviceName, "up")
-				Expect(upState).NotTo(BeNil())
-				Expect(upState.(map[string]interface{})["state"]).To(Equal("down"))
+			It("publishes an 'up' message for the device", func() {
+				// read and ignore the "up" state message that was published when the device connected
+				_, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(deviceClient.Close()).ToNot(HaveOccurred())
+				<-handleConnectionReturned
+
+				pkg, err := packets.ReadPacket(controlClient)
+				Expect(err).NotTo(HaveOccurred())
+
+				pubPkg, ok := pkg.(*packets.PublishPacket)
+				Expect(ok).To(BeTrue())
+
+				upState := make(map[string]interface{})
+				err = json.Unmarshal(pubPkg.Payload, &upState)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(upState["state"]).To(Equal("down"))
 			})
 		})
 	})

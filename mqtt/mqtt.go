@@ -9,7 +9,7 @@ import (
 )
 
 // Connect performs the connection handshake and returns the connect packet or an error
-func Connect(conn net.Conn) (p *packets.ConnectPacket, err error) {
+func Connect(conn net.Conn, sendConnack bool) (p *packets.ConnectPacket, err error) {
 	ca, err := packets.ReadPacket(conn)
 	if err != nil {
 		return
@@ -20,8 +20,10 @@ func Connect(conn net.Conn) (p *packets.ConnectPacket, err error) {
 		return nil, errors.New("expected a CONNECT message, got some other garbage instead. closing connection")
 	}
 
-	cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
-	err = cAck.Write(conn)
+	if sendConnack {
+		cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
+		err = cAck.Write(conn)
+	}
 	return
 }
 

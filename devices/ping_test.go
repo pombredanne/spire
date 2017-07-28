@@ -22,23 +22,10 @@ var _ = Describe("Ping Message Handler", func() {
 	var deviceName = "1.marsara"
 	var topic = fmt.Sprintf("/pylon/%s/wan/ping", deviceName)
 	var payload []byte
-	var done chan bool
 
 	BeforeEach(func() {
 		broker = mqtt.NewBroker()
 		formations = devices.NewFormationMap()
-
-		// init the formation map
-		upState := map[string]interface{}{"state": "up", "timestamp": time.Now().Unix()}
-		formations.PutDeviceState(formationID, deviceName, "up", upState)
-		done = make(chan bool)
-	})
-	JustBeforeEach(func() {
-		go func() {
-			err := devices.HandlePing(topic, payload, formationID, deviceName, formations, broker)
-			Expect(err).NotTo(HaveOccurred())
-			done <- true
-		}()
 	})
 	Context("first ping message from this device", func() {
 		var firstPingTimestamp time.Time
@@ -78,12 +65,16 @@ var _ = Describe("Ping Message Handler", func() {
 			`, firstPingTimestamp.Unix()))
 		})
 		It("adds ping state to the device state", func() {
-			<-done
+			err := devices.HandlePing(topic, payload, formationID, deviceName, formations, broker)
+			Expect(err).NotTo(HaveOccurred())
+
 			_, ok := formations.GetDeviceState(formationID, deviceName, "ping").(*devices.PingState)
 			Expect(ok).To(BeTrue())
 		})
 		It("initializes ping state with the values from the message", func() {
-			<-done
+			err := devices.HandlePing(topic, payload, formationID, deviceName, formations, broker)
+			Expect(err).NotTo(HaveOccurred())
+
 			ps, ok := formations.GetDeviceState(formationID, deviceName, "ping").(*devices.PingState)
 			Expect(ok).To(BeTrue())
 
@@ -121,11 +112,22 @@ var _ = Describe("Ping Message Handler", func() {
 				Expect(ok).To(BeTrue())
 			})
 			It("publishes the ping message", func() {
-				pkg, err := packets.ReadPacket(subscriberConn)
-				Expect(err).NotTo(HaveOccurred())
-				pubPkg, ok := pkg.(*packets.PublishPacket)
-				Expect(ok).To(BeTrue())
+				var ok bool
+				var pubPkg *packets.PublishPacket
+				pubRead := make(chan bool)
 
+				go func() {
+					pkg, err := packets.ReadPacket(subscriberConn)
+					Expect(err).NotTo(HaveOccurred())
+					pubPkg, ok = pkg.(*packets.PublishPacket)
+					Expect(ok).To(BeTrue())
+					pubRead <- true
+				}()
+
+				err := devices.HandlePing(topic, payload, formationID, deviceName, formations, broker)
+				Expect(err).NotTo(HaveOccurred())
+
+				<-pubRead
 				Expect(pubPkg.TopicName).To(Equal("/armada/" + deviceName + "/wan/ping"))
 
 				var ps devices.PingState
@@ -151,7 +153,8 @@ var _ = Describe("Ping Message Handler", func() {
 		})
 		Context("subsequent ping message from this device", func() {
 			JustBeforeEach(func() {
-				<-done
+				err := devices.HandlePing(topic, payload, formationID, deviceName, formations, broker)
+				Expect(err).NotTo(HaveOccurred())
 
 				pl := `
 				{

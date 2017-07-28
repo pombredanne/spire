@@ -25,7 +25,7 @@ func NewBroker() *Broker {
 
 // HandleConnection ...
 func (b *Broker) HandleConnection(conn net.Conn) {
-	if _, err := Connect(conn); err != nil {
+	if _, err := Connect(conn, true); err != nil {
 		log.Println(err)
 		return
 	}
