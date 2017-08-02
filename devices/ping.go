@@ -63,10 +63,11 @@ func updatePingState(currentState, pingMsg *PingState) *PingState {
 	}
 
 	resetCount := false
-	twelveHoursAgo := time.Now().Add(-12 * time.Hour)
-	if currentState.Timestamp.Before(twelveHoursAgo) {
+	nowUTC := time.Now().UTC()
+	// Check if the last timestamp is older than 12 hours
+	if nowUTC.Sub(currentState.Timestamp) >= 12*time.Hour {
 		resetCount = true
-		currentState.Timestamp = twelveHoursAgo
+		currentState.Timestamp = nowUTC
 	}
 
 	UpdateLosses(&currentState.Internet.Ping, pingMsg.Internet.Ping.Sent, pingMsg.Internet.Ping.Received, resetCount)
