@@ -11,3 +11,4 @@ RUN go get github.com/onsi/gomega
 
 CMD ["./spire"]
 EXPOSE 1883
+EXPOSE 1884
