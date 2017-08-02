@@ -22,12 +22,10 @@ node  {
             image.run('', '"/go/bin/ginkgo" "-r" "-cover"')
         }
         if (env.BRANCH_NAME == "master") {
-            withCredentials([$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'aws', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']) {
-        	   stage("Publish ECR") {
-                    def vers = sh(returnStdout: true, script: 'git describe --tags').trim()
-                	image.push "${vers}"
-        	   }
-            }
+           stage("Publish ECR") {
+                def vers = sh(returnStdout: true, script: 'git describe --tags').trim()
+                image.push "${vers}"
+           }
         }
     }
 }
