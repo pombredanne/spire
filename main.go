@@ -27,6 +27,12 @@ func main() {
 	controlServer := service.NewServer(service.Config.ControlBind, broker.HandleConnection)
 	controlServer.Run()
 
+	if err := service.RegisterInConsul(); err != nil {
+		devicesServer.Shutdown()
+		controlServer.Shutdown()
+		panic(err)
+	}
+
 	quit := make(chan os.Signal)
 	signal.Notify(quit, os.Interrupt, os.Kill)
 	<-quit
