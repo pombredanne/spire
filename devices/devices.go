@@ -75,7 +75,6 @@ func (h *MessageHandler) handleMessages(conn net.Conn, formationID, deviceName s
 		switch ca := ca.(type) {
 		case *packets.PublishPacket:
 			h.dispatch(formationID, deviceName, ca)
-			h.broker.Publish(ca)
 		case *packets.SubscribePacket:
 			h.broker.Subscribe(ca, conn)
 		case *packets.UnsubscribePacket:
@@ -103,6 +102,10 @@ func (h *MessageHandler) deviceConnected(formationID, deviceName string, conn ne
 	deviceOS := getDeviceOS(info)
 	h.formations.PutDeviceState(formationID, deviceName, "device_info", map[string]interface{}{"device_os": deviceOS})
 
+	if err := h.initOTAState(formationID, deviceName); err != nil {
+		log.Println("failed to init OTA state.", err)
+	}
+
 	ctx, cancelFn := context.WithCancel(context.Background())
 	go h.publishUpState(ctx, deviceName)
 
@@ -113,9 +116,27 @@ func (h *MessageHandler) deviceConnected(formationID, deviceName string, conn ne
 		if err := conn.Close(); err != nil {
 			log.Println(err)
 		}
+
+		// FIXME this does not belong here
+		otaState, ok := h.formations.GetDeviceState(formationID, deviceName, "ota").(*OTAState)
+		if ok && otaState.State == Downloading {
+
+			otaState := &OTAState{
+				State: Error,
+				Error: "connection to device lost during download",
+			}
+
+			publishOTAMessage(deviceName, otaState, h.broker)
+		}
 	}
 
 	return disconnectFn, nil
+}
+
+func (h *MessageHandler) initOTAState(formationID, deviceName string) error {
+	state := &OTAState{State: Default}
+	h.formations.PutDeviceState(formationID, deviceName, "ota", state)
+	return publishOTAMessage(deviceName, state, h.broker)
 }
 
 func (h *MessageHandler) publishUpState(ctx context.Context, deviceName string) {
@@ -160,6 +181,10 @@ func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.P
 		}
 	case "exceptions":
 		if err := HandleException(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker); err != nil {
+			log.Println(err)
+		}
+	case "ota":
+		if err := HandleOTA(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker); err != nil {
 			log.Println(err)
 		}
 	default:

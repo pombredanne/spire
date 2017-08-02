@@ -13,13 +13,13 @@ import (
 // Broker manages pub/sub
 type Broker struct {
 	l           sync.RWMutex
-	subscribers map[string][]net.Conn
+	Subscribers map[string][]net.Conn
 }
 
 // NewBroker ...
 func NewBroker() *Broker {
 	return &Broker{
-		subscribers: make(map[string][]net.Conn),
+		Subscribers: make(map[string][]net.Conn),
 	}
 }
 
@@ -58,7 +58,7 @@ func (b *Broker) HandleConnection(conn net.Conn) {
 	}
 }
 
-// Subscribe adds the connection to the list of subscribers to the topic
+// Subscribe adds the connection to the list of Subscribers to the topic
 func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
 	if len(pkg.Topics) > len(pkg.Qoss) {
 		// according to
@@ -84,7 +84,7 @@ func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
 	sAck.Write(conn)
 }
 
-// Unsubscribe removes the connection from the list of subscribers to the topic
+// Unsubscribe removes the connection from the list of Subscribers to the topic
 func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
 	b.l.Lock()
 	defer b.l.Unlock()
@@ -101,6 +101,10 @@ func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
 // Publish ...
 func (b *Broker) Publish(pkg *packets.PublishPacket) {
 	topics := MatchTopics(pkg.TopicName, b.topics())
+	if len(topics) == 0 {
+		return
+	}
+
 	subs := []net.Conn{}
 
 	for _, t := range topics {
@@ -120,7 +124,7 @@ func (b *Broker) Remove(conn net.Conn) {
 	b.l.Lock()
 	defer b.l.Unlock()
 
-	for topic := range b.subscribers {
+	for topic := range b.Subscribers {
 		b.removeFromTopic(topic, conn)
 	}
 }
@@ -143,8 +147,8 @@ func (b *Broker) topics() []string {
 	defer b.l.RUnlock()
 
 	i := 0
-	res := make([]string, len(b.subscribers))
-	for topic := range b.subscribers {
+	res := make([]string, len(b.Subscribers))
+	for topic := range b.Subscribers {
 		res[i] = topic
 		i++
 	}
@@ -156,7 +160,7 @@ func (b *Broker) get(topic string) []net.Conn {
 	b.l.RLock()
 	defer b.l.RUnlock()
 
-	subs, exists := b.subscribers[topic]
+	subs, exists := b.Subscribers[topic]
 	if !exists {
 		return []net.Conn{}
 	}
@@ -167,7 +171,7 @@ func (b *Broker) add(topic string, conn net.Conn) {
 	b.l.Lock()
 	defer b.l.Unlock()
 
-	subs, exists := b.subscribers[topic]
+	subs, exists := b.Subscribers[topic]
 	if !exists {
 	}
 
@@ -176,15 +180,15 @@ func (b *Broker) add(topic string, conn net.Conn) {
 			return
 		}
 
-		b.subscribers[topic] = append(subs, subConn)
+		b.Subscribers[topic] = append(subs, subConn)
 	}
 
-	b.subscribers[topic] = []net.Conn{conn}
+	b.Subscribers[topic] = []net.Conn{conn}
 }
 
 // ACHTUNG: caller must acquire and release b.l
 func (b *Broker) removeFromTopic(topic string, conn net.Conn) {
-	conns, exists := b.subscribers[topic]
+	conns, exists := b.Subscribers[topic]
 	if !exists {
 		return
 	}
@@ -200,9 +204,9 @@ func (b *Broker) removeFromTopic(topic string, conn net.Conn) {
 	conns = conns[:len(conns)-1]
 
 	if len(conns) == 0 {
-		delete(b.subscribers, topic)
+		delete(b.Subscribers, topic)
 	} else {
-		b.subscribers[topic] = conns
+		b.Subscribers[topic] = conns
 	}
 }
 
