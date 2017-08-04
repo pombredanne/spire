@@ -41,6 +41,7 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 
 	deviceName := connectPkg.ClientIdentifier
 	formationID := connectPkg.Username
+
 	if len(formationID) == 0 {
 		log.Println("CONNECT packet from", conn.RemoteAddr(), "is missing formation ID. closing connection")
 		conn.Close()
@@ -56,7 +57,6 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 
 	cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
 	err = cAck.Write(conn)
-
 	h.handleMessages(conn, formationID, deviceName, deviceDisconnected)
 }
 
@@ -73,6 +73,10 @@ func (h *MessageHandler) handleMessages(conn net.Conn, formationID, deviceName s
 		}
 
 		switch ca := ca.(type) {
+		case *packets.PingreqPacket:
+			if err := mqtt.SendPingResponse(conn); err != nil {
+				return
+			}
 		case *packets.PublishPacket:
 			h.dispatch(formationID, deviceName, ca)
 		case *packets.SubscribePacket:

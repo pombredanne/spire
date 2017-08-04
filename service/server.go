@@ -47,6 +47,7 @@ func (s *Server) Run() {
 			return
 		}
 
+		log.Println("listening on", s.bind)
 		for {
 			conn, err := s.listener.Accept()
 
@@ -59,10 +60,8 @@ func (s *Server) Run() {
 
 				log.Println(err)
 				return
-
-			} else {
-				go s.connHandler(conn)
 			}
+			go s.connHandler(conn)
 		}
 	}()
 }

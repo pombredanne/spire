@@ -42,6 +42,10 @@ func (b *Broker) HandleConnection(conn net.Conn) {
 		}
 
 		switch p := pkg.(type) {
+		case *packets.PingreqPacket:
+			if err := SendPingResponse(conn); err != nil {
+				return
+			}
 		case *packets.PublishPacket:
 			b.Publish(p)
 		case *packets.SubscribePacket:

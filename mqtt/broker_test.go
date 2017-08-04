@@ -13,15 +13,39 @@ import (
 
 var _ = Describe("Broker", func() {
 
+	var brokerConn, subscriberConn net.Conn
+	var broker *mqtt.Broker
+
+	BeforeEach(func() {
+		brokerConn, subscriberConn = net.Pipe()
+		broker = mqtt.NewBroker()
+	})
+	Context("pingreq", func() {
+		var response packets.ControlPacket
+
+		BeforeEach(func() {
+			go broker.HandleConnection(brokerConn)
+
+			packets.NewControlPacket(packets.Connect).Write(subscriberConn)
+			_, err := packets.ReadPacket(subscriberConn)
+			Expect(err).NotTo(HaveOccurred())
+
+			pkg := packets.NewControlPacket(packets.Pingreq)
+			err = pkg.Write(subscriberConn)
+			Expect(err).NotTo(HaveOccurred())
+
+			response, err = packets.ReadPacket(subscriberConn)
+			Expect(err).NotTo(HaveOccurred())
+		})
+		It("responds with pingresp", func() {
+			_, ok := response.(*packets.PingrespPacket)
+			Expect(ok).To(BeTrue())
+		})
+	})
 	Context("subscribe", func() {
-		var brokerConn, subscriberConn net.Conn
-		var broker *mqtt.Broker
 		var subResponse packets.ControlPacket
 
 		BeforeEach(func() {
-			brokerConn, subscriberConn = net.Pipe()
-			broker = mqtt.NewBroker()
-
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 			subPkg.Topics = []string{"/pylon/1.marsara/up"}
 			subPkg.Qoss = []byte{0}

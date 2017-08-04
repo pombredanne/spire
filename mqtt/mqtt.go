@@ -3,6 +3,7 @@ package mqtt
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
@@ -45,5 +46,15 @@ func MakePublishPacket(topic string, message interface{}) (p *packets.PublishPac
 	p.Qos = 0
 	p.TopicName = topic
 	p.Payload = payload
+	return
+}
+
+// SendPingResponse ...
+func SendPingResponse(conn net.Conn) (err error) {
+	pingPkg := packets.NewControlPacket(packets.Pingresp).(*packets.PingrespPacket)
+	if err = pingPkg.Write(conn); err != nil {
+		log.Println(err)
+		conn.Close()
+	}
 	return
 }
