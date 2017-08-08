@@ -25,6 +25,7 @@ node  {
            stage("Publish ECR") {
                 def vers = sh(returnStdout: true, script: 'git describe --tags').trim()
                 image.push "${vers}"
+                image.push "latest"
            }
         }
     }
