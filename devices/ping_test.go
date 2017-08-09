@@ -103,7 +103,6 @@ var _ = Describe("Ping Message Handler", func() {
 				subscriberConn, brokerConn = net.Pipe()
 				subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				subPkg.Topics = []string{"/armada/" + deviceName + "/wan/ping"}
-				subPkg.Qoss = []byte{0}
 				go broker.Subscribe(subPkg, brokerConn)
 
 				pkg, err := packets.ReadPacket(subscriberConn)

@@ -64,7 +64,6 @@ var _ = Describe("OTA Message Handler", func() {
 				subscriberConn, brokerConn = net.Pipe()
 				subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				subPkg.Topics = []string{"/armada/" + deviceName + "/ota"}
-				subPkg.Qoss = []byte{0}
 				go broker.Subscribe(subPkg, brokerConn)
 
 				pkg, err := packets.ReadPacket(subscriberConn)
@@ -129,7 +128,6 @@ var _ = Describe("OTA Message Handler", func() {
 				subscriberConn, brokerConn = net.Pipe()
 				subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				subPkg.Topics = []string{"/armada/" + deviceName + "/ota"}
-				subPkg.Qoss = []byte{0}
 				go broker.Subscribe(subPkg, brokerConn)
 
 				pkg, err := packets.ReadPacket(subscriberConn)
@@ -195,7 +193,6 @@ var _ = Describe("OTA Message Handler", func() {
 			subscriberConn, brokerConn = net.Pipe()
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 			subPkg.Topics = []string{"/armada/" + deviceName + "/ota"}
-			subPkg.Qoss = []byte{0}
 			go func() {
 				<-connected
 				broker.Subscribe(subPkg, brokerConn)

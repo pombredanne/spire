@@ -48,7 +48,6 @@ var _ = Describe("Broker", func() {
 		BeforeEach(func() {
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 			subPkg.Topics = []string{"/pylon/1.marsara/up"}
-			subPkg.Qoss = []byte{0}
 			subPkg.MessageID = 1337
 
 			go broker.Subscribe(subPkg, brokerConn)

@@ -62,7 +62,6 @@ var _ = Describe("Device Message Handlers", func() {
 				controlServer, controlClient = net.Pipe()
 				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
-				pkg.Qoss = []byte{0}
 				go broker.Subscribe(pkg, controlServer)
 
 				// read suback
@@ -91,7 +90,6 @@ var _ = Describe("Device Message Handlers", func() {
 				controlServer, controlClient = net.Pipe()
 				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
-				pkg.Qoss = []byte{0}
 				go broker.Subscribe(pkg, controlServer)
 
 				// read suback
@@ -150,7 +148,6 @@ var _ = Describe("Device Message Handlers", func() {
 				controlServer, controlClient = net.Pipe()
 				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
-				pkg.Qoss = []byte{0}
 				go broker.Subscribe(pkg, controlServer)
 
 				// read suback

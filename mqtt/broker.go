@@ -64,24 +64,7 @@ func (b *Broker) HandleConnection(conn net.Conn) {
 
 // Subscribe adds the connection to the list of Subscribers to the topic
 func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
-	if len(pkg.Topics) > len(pkg.Qoss) {
-		// according to
-		// http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc398718110
-		// we kill the connection if we don't like a packet
-		log.Printf("closing connection to %v because SUBSCRIBE packet contains %d, but %d QoS'es", conn.RemoteAddr(), len(pkg.Topics), len(pkg.Qoss))
-		b.Remove(conn)
-		conn.Close()
-		return
-	}
-
-	for i, topic := range pkg.Topics {
-		if pkg.Qoss[i] > 0 {
-			log.Printf("closing connetion to %v because SUBSCRIBE packet contains QoS > 0", conn.RemoteAddr())
-			b.Remove(conn)
-			conn.Close()
-			return
-		}
-
+	for _, topic := range pkg.Topics {
 		b.add(topic, conn)
 	}
 
