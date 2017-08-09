@@ -40,28 +40,26 @@ func (s *Server) Shutdown() {
 
 // Run ...
 func (s *Server) Run() {
-	go func() {
-		var err error
-		if s.listener, err = net.Listen("tcp", s.bind); err != nil {
+	var err error
+	if s.listener, err = net.Listen("tcp", s.bind); err != nil {
+		log.Println(err)
+		return
+	}
+
+	log.Println("listening on", s.bind)
+	for {
+		conn, err := s.listener.Accept()
+
+		if err != nil {
+			select {
+			case <-s.quit:
+				return
+			default:
+			}
+
 			log.Println(err)
 			return
 		}
-
-		log.Println("listening on", s.bind)
-		for {
-			conn, err := s.listener.Accept()
-
-			if err != nil {
-				select {
-				case <-s.quit:
-					return
-				default:
-				}
-
-				log.Println(err)
-				return
-			}
-			go s.connHandler(conn)
-		}
-	}()
+		go s.connHandler(conn)
+	}
 }
