@@ -2,7 +2,6 @@ package devices_test
 
 import (
 	"encoding/json"
-	"net"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
@@ -14,7 +13,7 @@ import (
 var _ = Describe("Device Message Handlers", func() {
 
 	var devMsgHandler *devices.MessageHandler
-	var deviceServer, deviceClient net.Conn
+	var deviceServer, deviceClient *mqtt.Conn
 	var response packets.ControlPacket
 	var broker *mqtt.Broker
 	var handleConnectionReturned chan bool
@@ -25,7 +24,7 @@ var _ = Describe("Device Message Handlers", func() {
 	BeforeEach(func() {
 		broker = mqtt.NewBroker()
 		devMsgHandler = devices.NewMessageHandler(broker)
-		deviceServer, deviceClient = net.Pipe()
+		deviceServer, deviceClient = mqtt.Pipe()
 
 		handleConnectionReturned = make(chan bool)
 	})
@@ -39,10 +38,10 @@ var _ = Describe("Device Message Handlers", func() {
 		connPkg.ClientIdentifier = deviceName
 		connPkg.Username = formationID
 		connPkg.UsernameFlag = true
-		Expect(connPkg.Write(deviceClient)).NotTo(HaveOccurred())
+		Expect(deviceClient.Write(connPkg)).NotTo(HaveOccurred())
 
 		var err error
-		response, err = packets.ReadPacket(deviceClient)
+		response, err = deviceClient.Read()
 		Expect(err).NotTo(HaveOccurred())
 	})
 	Describe("connect", func() {
@@ -56,20 +55,20 @@ var _ = Describe("Device Message Handlers", func() {
 			Expect(deviceInfoState.(map[string]interface{})["device_os"]).To(Equal("tplink-archer-c7-lingrush-44"))
 		})
 		Describe("pub/sub", func() {
-			var controlServer, controlClient net.Conn
+			var controlServer, controlClient *mqtt.Conn
 
 			BeforeEach(func() {
-				controlServer, controlClient = net.Pipe()
+				controlServer, controlClient = mqtt.Pipe()
 				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
 				go broker.Subscribe(pkg, controlServer)
 
 				// read suback
-				_, err := packets.ReadPacket(controlClient)
+				_, err := controlClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("publishes an 'up' message for the device", func() {
-				pkg, err := packets.ReadPacket(controlClient)
+				pkg, err := controlClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 
 				pubPkg, ok := pkg.(*packets.PublishPacket)
@@ -84,27 +83,27 @@ var _ = Describe("Device Message Handlers", func() {
 	})
 	Describe("disconnect", func() {
 		Context("by sending DISCONNECT", func() {
-			var controlServer, controlClient net.Conn
+			var controlServer, controlClient *mqtt.Conn
 
 			BeforeEach(func() {
-				controlServer, controlClient = net.Pipe()
+				controlServer, controlClient = mqtt.Pipe()
 				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
 				go broker.Subscribe(pkg, controlServer)
 
 				// read suback
-				_, err := packets.ReadPacket(controlClient)
+				_, err := controlClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("publishes an 'up' message for the device", func() {
 				dPkg := packets.NewControlPacket(packets.Disconnect)
-				Expect(dPkg.Write(deviceClient)).NotTo(HaveOccurred())
+				Expect(deviceClient.Write(dPkg)).NotTo(HaveOccurred())
 
 				// read and ignore the "up" state message that was published when the device connected
-				_, err := packets.ReadPacket(controlClient)
+				_, err := controlClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 
-				pkg, err := packets.ReadPacket(controlClient)
+				pkg, err := controlClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 
 				pubPkg, ok := pkg.(*packets.PublishPacket)
@@ -118,9 +117,9 @@ var _ = Describe("Device Message Handlers", func() {
 			Context("reconnect", func() {
 				It("responds with CONNACK", func() {
 					dPkg := packets.NewControlPacket(packets.Disconnect)
-					Expect(dPkg.Write(deviceClient)).NotTo(HaveOccurred())
+					Expect(deviceClient.Write(dPkg)).NotTo(HaveOccurred())
 
-					deviceServer, deviceClient = net.Pipe()
+					deviceServer, deviceClient = mqtt.Pipe()
 
 					go func() {
 						devMsgHandler.HandleConnection(deviceServer)
@@ -130,10 +129,10 @@ var _ = Describe("Device Message Handlers", func() {
 					connPkg.ClientIdentifier = deviceName
 					connPkg.Username = formationID
 					connPkg.UsernameFlag = true
-					Expect(connPkg.Write(deviceClient)).NotTo(HaveOccurred())
+					Expect(deviceClient.Write(connPkg)).NotTo(HaveOccurred())
 
 					var err error
-					response, err = packets.ReadPacket(deviceClient)
+					response, err = deviceClient.Read()
 					Expect(err).NotTo(HaveOccurred())
 
 					_, isConnAck := response.(*packets.ConnackPacket)
@@ -142,27 +141,27 @@ var _ = Describe("Device Message Handlers", func() {
 			})
 		})
 		Context("by closing the connection", func() {
-			var controlServer, controlClient net.Conn
+			var controlServer, controlClient *mqtt.Conn
 
 			BeforeEach(func() {
-				controlServer, controlClient = net.Pipe()
+				controlServer, controlClient = mqtt.Pipe()
 				pkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				pkg.Topics = []string{"/armada/" + deviceName + "/up"}
 				go broker.Subscribe(pkg, controlServer)
 
 				// read suback
-				_, err := packets.ReadPacket(controlClient)
+				_, err := controlClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("publishes an 'up' message for the device", func() {
 				// read and ignore the "up" state message that was published when the device connected
-				_, err := packets.ReadPacket(controlClient)
+				_, err := controlClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(deviceClient.Close()).ToNot(HaveOccurred())
 				<-handleConnectionReturned
 
-				pkg, err := packets.ReadPacket(controlClient)
+				pkg, err := controlClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 
 				pubPkg, ok := pkg.(*packets.PublishPacket)

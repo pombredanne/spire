@@ -6,33 +6,34 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"github.com/superscale/spire/config"
 	"github.com/superscale/spire/mqtt"
-	"github.com/superscale/spire/service"
 )
 
 // MessageHandler ...
 type MessageHandler struct {
-	broker     *mqtt.Broker
-	formations *FormationMap
+	broker      *mqtt.Broker
+	formations  *FormationMap
+	idleTimeout time.Duration
 }
 
 // NewMessageHandler ...
 func NewMessageHandler(broker *mqtt.Broker) *MessageHandler {
 	return &MessageHandler{
-		broker:     broker,
-		formations: NewFormationMap(),
+		broker:      broker,
+		formations:  NewFormationMap(),
+		idleTimeout: config.Config.IdleConnectionTimeout,
 	}
 }
 
 // HandleConnection receives a connection from a device and dispatches its messages to the designated handler
-func (h *MessageHandler) HandleConnection(conn net.Conn) {
-	connectPkg, err := mqtt.Connect(conn, false)
+func (h *MessageHandler) HandleConnection(conn *mqtt.Conn) {
+	connectPkg, err := conn.ReadConnect()
 	if err != nil {
 		log.Println("error while reading packet:", err, ". closing connection")
 		conn.Close()
@@ -55,14 +56,13 @@ func (h *MessageHandler) HandleConnection(conn net.Conn) {
 		return
 	}
 
-	cAck := packets.NewControlPacket(packets.Connack).(*packets.ConnackPacket)
-	err = cAck.Write(conn)
+	conn.AcknowledgeConnect()
 	h.handleMessages(conn, formationID, deviceName, deviceDisconnected)
 }
 
-func (h *MessageHandler) handleMessages(conn net.Conn, formationID, deviceName string, deviceDisconnected func()) {
+func (h *MessageHandler) handleMessages(conn *mqtt.Conn, formationID, deviceName string, deviceDisconnected func()) {
 	for {
-		ca, err := packets.ReadPacket(conn)
+		ca, err := conn.Read()
 		if err != nil {
 			if err != io.EOF {
 				log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
@@ -74,20 +74,22 @@ func (h *MessageHandler) handleMessages(conn net.Conn, formationID, deviceName s
 
 		switch ca := ca.(type) {
 		case *packets.PingreqPacket:
-			if err := mqtt.SendPingResponse(conn); err != nil {
-				return
-			}
+			err = conn.SendPong()
 		case *packets.PublishPacket:
-			h.dispatch(formationID, deviceName, ca)
+			err = h.dispatch(formationID, deviceName, ca)
 		case *packets.SubscribePacket:
-			h.broker.Subscribe(ca, conn)
+			err = h.broker.Subscribe(ca, conn)
 		case *packets.UnsubscribePacket:
-			h.broker.Unsubscribe(ca, conn)
+			err = h.broker.Unsubscribe(ca, conn)
 		case *packets.DisconnectPacket:
 			deviceDisconnected()
 			return
 		default:
 			log.Println("ignoring unsupported message from", deviceName)
+		}
+
+		if err != nil {
+			log.Printf("error while handling packet from device %s (%v): %v", deviceName, conn.RemoteAddr(), err)
 		}
 	}
 }
@@ -97,7 +99,7 @@ func (h *MessageHandler) GetDeviceState(formationID, deviceName, key string) int
 	return h.formations.GetDeviceState(formationID, deviceName, key)
 }
 
-func (h *MessageHandler) deviceConnected(formationID, deviceName string, conn net.Conn) (func(), error) {
+func (h *MessageHandler) deviceConnected(formationID, deviceName string, conn *mqtt.Conn) (func(), error) {
 	info, err := fetchDeviceInfo(deviceName)
 	if err != nil {
 		return nil, err
@@ -172,7 +174,7 @@ func (h *MessageHandler) publishUpState(ctx context.Context, deviceName string) 
 	}
 }
 
-func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.PublishPacket) {
+func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.PublishPacket) (err error) {
 	parts := strings.Split(msg.TopicName, "/")
 	if len(parts) < 4 || parts[0] != "" || parts[1] != "pylon" || parts[2] != deviceName {
 		return
@@ -180,30 +182,25 @@ func (h *MessageHandler) dispatch(formationID, deviceName string, msg *packets.P
 
 	switch strings.Join(parts[3:], "/") {
 	case "wan/ping":
-		if err := HandlePing(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker); err != nil {
-			log.Println(err)
-		}
+		err = HandlePing(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker)
 	case "exceptions":
-		if err := HandleException(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker); err != nil {
-			log.Println(err)
-		}
+		err = HandleException(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker)
 	case "ota":
-		if err := HandleOTA(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker); err != nil {
-			log.Println(err)
-		}
+		err = HandleOTA(msg.TopicName, msg.Payload, formationID, deviceName, h.formations, h.broker)
 	default:
-		return
+		break
 	}
+	return
 }
 
 func fetchDeviceInfo(deviceName string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/v2/devices/%s", service.Config.LiberatorBaseURL, deviceName)
+	url := fmt.Sprintf("%s/v2/devices/%s", config.Config.LiberatorBaseURL, deviceName)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Add("Authorization", "Bearer "+service.Config.LiberatorJWTToken)
+	req.Header.Add("Authorization", "Bearer "+config.Config.LiberatorJWTToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err

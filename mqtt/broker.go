@@ -3,35 +3,40 @@ package mqtt
 import (
 	"io"
 	"log"
-	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
+	"github.com/superscale/spire/config"
 )
+
+type subscriberMap map[string][]*Conn
 
 // Broker manages pub/sub
 type Broker struct {
 	l           sync.RWMutex
-	Subscribers map[string][]net.Conn
+	Subscribers subscriberMap
+	idleTimeout time.Duration
 }
 
 // NewBroker ...
 func NewBroker() *Broker {
 	return &Broker{
-		Subscribers: make(map[string][]net.Conn),
+		Subscribers: make(subscriberMap),
+		idleTimeout: config.Config.IdleConnectionTimeout,
 	}
 }
 
 // HandleConnection ...
-func (b *Broker) HandleConnection(conn net.Conn) {
-	if _, err := Connect(conn, true); err != nil {
+func (b *Broker) HandleConnection(conn *Conn) {
+	if _, err := conn.Handshake(); err != nil {
 		log.Println(err)
 		return
 	}
 
 	for {
-		pkg, err := packets.ReadPacket(conn)
+		pkg, err := conn.Read()
 		if err != nil {
 			if err != io.EOF {
 				log.Println(err)
@@ -43,38 +48,40 @@ func (b *Broker) HandleConnection(conn net.Conn) {
 
 		switch p := pkg.(type) {
 		case *packets.PingreqPacket:
-			if err := SendPingResponse(conn); err != nil {
-				return
-			}
+			err = conn.SendPong()
 		case *packets.PublishPacket:
 			b.Publish(p)
 		case *packets.SubscribePacket:
-			b.Subscribe(p, conn)
+			err = b.Subscribe(p, conn)
 		case *packets.UnsubscribePacket:
-			b.Unsubscribe(p, conn)
+			err = b.Unsubscribe(p, conn)
 		default:
 			b.Remove(conn)
-			if err := conn.Close(); err != nil {
+			if err = conn.Close(); err != nil {
 				log.Println(err)
 			}
 			return
+		}
+
+		if err != nil {
+			log.Printf("error while handling packet in broker. peer %v: %v", conn.RemoteAddr(), err)
 		}
 	}
 }
 
 // Subscribe adds the connection to the list of Subscribers to the topic
-func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn net.Conn) {
+func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn *Conn) error {
 	for _, topic := range pkg.Topics {
 		b.add(topic, conn)
 	}
 
 	sAck := packets.NewControlPacket(packets.Suback).(*packets.SubackPacket)
 	sAck.MessageID = pkg.MessageID
-	sAck.Write(conn)
+	return conn.Write(sAck)
 }
 
 // Unsubscribe removes the connection from the list of Subscribers to the topic
-func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
+func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn *Conn) error {
 	b.l.Lock()
 	defer b.l.Unlock()
 
@@ -84,7 +91,7 @@ func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn net.Conn) {
 
 	sAck := packets.NewControlPacket(packets.Unsuback).(*packets.UnsubackPacket)
 	sAck.MessageID = pkg.MessageID
-	sAck.Write(conn)
+	return conn.Write(sAck)
 }
 
 // Publish ...
@@ -94,14 +101,14 @@ func (b *Broker) Publish(pkg *packets.PublishPacket) {
 		return
 	}
 
-	subs := []net.Conn{}
+	subs := []*Conn{}
 
 	for _, t := range topics {
 		subs = append(subs, b.get(t)...)
 	}
 
 	for _, s := range subs {
-		err := pkg.Write(s)
+		err := s.Write(pkg)
 		if err != nil {
 			log.Println(err)
 		}
@@ -109,7 +116,7 @@ func (b *Broker) Publish(pkg *packets.PublishPacket) {
 }
 
 // Remove ...
-func (b *Broker) Remove(conn net.Conn) {
+func (b *Broker) Remove(conn *Conn) {
 	b.l.Lock()
 	defer b.l.Unlock()
 
@@ -145,18 +152,18 @@ func (b *Broker) topics() []string {
 	return res
 }
 
-func (b *Broker) get(topic string) []net.Conn {
+func (b *Broker) get(topic string) []*Conn {
 	b.l.RLock()
 	defer b.l.RUnlock()
 
 	subs, exists := b.Subscribers[topic]
 	if !exists {
-		return []net.Conn{}
+		return []*Conn{}
 	}
 	return subs
 }
 
-func (b *Broker) add(topic string, conn net.Conn) {
+func (b *Broker) add(topic string, conn *Conn) {
 	b.l.Lock()
 	defer b.l.Unlock()
 
@@ -172,11 +179,11 @@ func (b *Broker) add(topic string, conn net.Conn) {
 		b.Subscribers[topic] = append(subs, subConn)
 	}
 
-	b.Subscribers[topic] = []net.Conn{conn}
+	b.Subscribers[topic] = []*Conn{conn}
 }
 
 // ACHTUNG: caller must acquire and release b.l
-func (b *Broker) removeFromTopic(topic string, conn net.Conn) {
+func (b *Broker) removeFromTopic(topic string, conn *Conn) {
 	conns, exists := b.Subscribers[topic]
 	if !exists {
 		return
@@ -222,7 +229,7 @@ func topicsMatch(t1, t2 []string) bool {
 	return true
 }
 
-func indexOf(conns []net.Conn, conn net.Conn) int {
+func indexOf(conns []*Conn, conn *Conn) int {
 	for i, c := range conns {
 		if c == conn {
 			return i

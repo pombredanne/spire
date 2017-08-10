@@ -7,7 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/superscale/spire/service"
+	"github.com/superscale/spire/config"
 )
 
 // TestHandlers ...
@@ -34,8 +34,8 @@ var _ = BeforeSuite(func() {
 			}`))
 	}))
 
-	service.Config.LiberatorBaseURL = mockLiberator.URL
-	service.Config.Environment = "test"
+	config.Config.LiberatorBaseURL = mockLiberator.URL
+	config.Config.Environment = "test"
 })
 
 var _ = AfterSuite(func() {

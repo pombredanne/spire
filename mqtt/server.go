@@ -1,18 +1,19 @@
-package service
+package mqtt
 
 import (
 	"log"
 	"net"
+
+	"github.com/superscale/spire/config"
 )
 
 // ConnectionHandler will be run in a goroutine for each connection the server accepts
-type ConnectionHandler func(net.Conn)
+type ConnectionHandler func(*Conn)
 
 // Server ...
 type Server struct {
 	bind        string
 	listener    net.Listener
-	quit        chan bool
 	connHandler ConnectionHandler
 }
 
@@ -25,17 +26,7 @@ func NewServer(bind string, connHandler ConnectionHandler) *Server {
 	return &Server{
 		bind:        bind,
 		connHandler: connHandler,
-		quit:        make(chan bool),
 	}
-}
-
-// Shutdown stops the server from listening
-func (s *Server) Shutdown() {
-	if s.listener == nil {
-		return
-	}
-	s.quit <- true
-	s.listener.Close()
 }
 
 // Run ...
@@ -51,15 +42,9 @@ func (s *Server) Run() {
 		conn, err := s.listener.Accept()
 
 		if err != nil {
-			select {
-			case <-s.quit:
-				return
-			default:
-			}
-
 			log.Println(err)
-			return
+		} else {
+			go s.connHandler(NewConn(conn, config.Config.IdleConnectionTimeout))
 		}
-		go s.connHandler(conn)
 	}
 }

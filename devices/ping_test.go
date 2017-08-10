@@ -3,7 +3,6 @@ package devices_test
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
@@ -97,15 +96,15 @@ var _ = Describe("Ping Message Handler", func() {
 			Expect(ps.Tunnel.Ping.Received).To(Equal(e))
 		})
 		Context("with subscribers", func() {
-			var subscriberConn, brokerConn net.Conn
+			var subscriberConn, brokerConn *mqtt.Conn
 
 			BeforeEach(func() {
-				subscriberConn, brokerConn = net.Pipe()
+				subscriberConn, brokerConn = mqtt.Pipe()
 				subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				subPkg.Topics = []string{"/armada/" + deviceName + "/wan/ping"}
 				go broker.Subscribe(subPkg, brokerConn)
 
-				pkg, err := packets.ReadPacket(subscriberConn)
+				pkg, err := subscriberConn.Read()
 				Expect(err).NotTo(HaveOccurred())
 				_, ok := pkg.(*packets.SubackPacket)
 				Expect(ok).To(BeTrue())
@@ -116,7 +115,7 @@ var _ = Describe("Ping Message Handler", func() {
 				pubRead := make(chan bool)
 
 				go func() {
-					pkg, err := packets.ReadPacket(subscriberConn)
+					pkg, err := subscriberConn.Read()
 					Expect(err).NotTo(HaveOccurred())
 					pubPkg, ok = pkg.(*packets.PublishPacket)
 					Expect(ok).To(BeTrue())

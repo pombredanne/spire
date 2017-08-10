@@ -1,26 +1,28 @@
 package main
 
 import (
-	"github.com/caarlos0/env"
+	"github.com/bugsnag/bugsnag-go"
+	"github.com/superscale/spire/config"
 	"github.com/superscale/spire/devices"
 	"github.com/superscale/spire/mqtt"
-	"github.com/superscale/spire/service"
 )
 
 func main() {
-	err := env.Parse(service.Config)
-	if err != nil {
-		panic(err)
-	}
+	config.Parse()
 
-	service.InitBugsnag()
+	if len(config.Config.BugsnagKey) > 0 {
+		bugsnag.Configure(bugsnag.Configuration{
+			APIKey:       config.Config.BugsnagKey,
+			ReleaseStage: config.Config.Environment,
+		})
+	}
 
 	broker := mqtt.NewBroker()
 
 	devMsgHandler := devices.NewMessageHandler(broker)
-	devicesServer := service.NewServer(service.Config.DevicesBind, devMsgHandler.HandleConnection)
+	devicesServer := mqtt.NewServer(config.Config.DevicesBind, devMsgHandler.HandleConnection)
 	go devicesServer.Run()
 
-	controlServer := service.NewServer(service.Config.ControlBind, broker.HandleConnection)
+	controlServer := mqtt.NewServer(config.Config.ControlBind, broker.HandleConnection)
 	controlServer.Run()
 }

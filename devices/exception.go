@@ -5,13 +5,13 @@ import (
 	"errors"
 
 	"github.com/bugsnag/bugsnag-go"
+	"github.com/superscale/spire/config"
 	"github.com/superscale/spire/mqtt"
-	"github.com/superscale/spire/service"
 )
 
 // HandleException ...
 func HandleException(_ string, payload []byte, formationID, deviceName string, formations *FormationMap, _ *mqtt.Broker) error {
-	if len(service.Config.BugsnagKey) == 0 {
+	if len(config.Config.BugsnagKey) == 0 {
 		return errors.New("bugsnag API key not set")
 	}
 

@@ -2,7 +2,6 @@ package mqtt_test
 
 import (
 	"encoding/json"
-	"net"
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
@@ -13,11 +12,11 @@ import (
 
 var _ = Describe("Broker", func() {
 
-	var brokerConn, subscriberConn net.Conn
+	var brokerConn, subscriberConn *mqtt.Conn
 	var broker *mqtt.Broker
 
 	BeforeEach(func() {
-		brokerConn, subscriberConn = net.Pipe()
+		brokerConn, subscriberConn = mqtt.Pipe()
 		broker = mqtt.NewBroker()
 	})
 	Context("pingreq", func() {
@@ -26,15 +25,15 @@ var _ = Describe("Broker", func() {
 		BeforeEach(func() {
 			go broker.HandleConnection(brokerConn)
 
-			packets.NewControlPacket(packets.Connect).Write(subscriberConn)
-			_, err := packets.ReadPacket(subscriberConn)
+			subscriberConn.Write(packets.NewControlPacket(packets.Connect))
+			_, err := subscriberConn.Read()
 			Expect(err).NotTo(HaveOccurred())
 
 			pkg := packets.NewControlPacket(packets.Pingreq)
-			err = pkg.Write(subscriberConn)
+			err = subscriberConn.Write(pkg)
 			Expect(err).NotTo(HaveOccurred())
 
-			response, err = packets.ReadPacket(subscriberConn)
+			response, err = subscriberConn.Read()
 			Expect(err).NotTo(HaveOccurred())
 		})
 		It("responds with pingresp", func() {
@@ -53,7 +52,7 @@ var _ = Describe("Broker", func() {
 			go broker.Subscribe(subPkg, brokerConn)
 
 			var err error
-			subResponse, err = packets.ReadPacket(subscriberConn)
+			subResponse, err = subscriberConn.Read()
 			Expect(err).NotTo(HaveOccurred())
 		})
 		AfterEach(func() {
@@ -74,7 +73,7 @@ var _ = Describe("Broker", func() {
 
 				go broker.Publish(pubPkg)
 
-				pkg, err = packets.ReadPacket(subscriberConn)
+				pkg, err = subscriberConn.Read()
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("forwards the message to subscribers", func() {
@@ -103,7 +102,7 @@ var _ = Describe("Broker", func() {
 				}()
 			})
 			It("does not forward the message", func() {
-				pkg, err := packets.ReadPacket(subscriberConn)
+				pkg, err := subscriberConn.Read()
 				Expect(err).To(HaveOccurred())
 				Expect(pkg).To(BeNil())
 			})
@@ -119,7 +118,7 @@ var _ = Describe("Broker", func() {
 				go broker.Unsubscribe(unsubPkg, brokerConn)
 
 				var err error
-				response, err = packets.ReadPacket(subscriberConn)
+				response, err = subscriberConn.Read()
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("responds with UNSUBACK", func() {

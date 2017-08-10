@@ -3,7 +3,6 @@ package devices_test
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
@@ -24,12 +23,12 @@ var _ = Describe("OTA Message Handler", func() {
 	})
 	Describe("on connect", func() {
 		var devMsgHandler *devices.MessageHandler
-		var deviceServer, deviceClient net.Conn
+		var deviceServer, deviceClient *mqtt.Conn
 		var connected chan bool
 
 		JustBeforeEach(func() {
 			devMsgHandler = devices.NewMessageHandler(broker)
-			deviceServer, deviceClient = net.Pipe()
+			deviceServer, deviceClient = mqtt.Pipe()
 
 			Expect(devMsgHandler.GetDeviceState(formationID, deviceName, "ota")).To(BeNil())
 
@@ -41,11 +40,11 @@ var _ = Describe("OTA Message Handler", func() {
 			connPkg.ClientIdentifier = deviceName
 			connPkg.Username = formationID
 			connPkg.UsernameFlag = true
-			Expect(connPkg.Write(deviceClient)).NotTo(HaveOccurred())
+			Expect(deviceClient.Write(connPkg)).NotTo(HaveOccurred())
 
 			connected = make(chan bool)
 			go func() {
-				_, err := packets.ReadPacket(deviceClient)
+				_, err := deviceClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 				connected <- true
 			}()
@@ -58,15 +57,15 @@ var _ = Describe("OTA Message Handler", func() {
 			deviceClient.Close()
 		})
 		Context("with subscribers", func() {
-			var subscriberConn, brokerConn net.Conn
+			var subscriberConn, brokerConn *mqtt.Conn
 
 			BeforeEach(func() {
-				subscriberConn, brokerConn = net.Pipe()
+				subscriberConn, brokerConn = mqtt.Pipe()
 				subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				subPkg.Topics = []string{"/armada/" + deviceName + "/ota"}
 				go broker.Subscribe(subPkg, brokerConn)
 
-				pkg, err := packets.ReadPacket(subscriberConn)
+				pkg, err := subscriberConn.Read()
 				Expect(err).NotTo(HaveOccurred())
 				_, ok := pkg.(*packets.SubackPacket)
 				Expect(ok).To(BeTrue())
@@ -77,7 +76,7 @@ var _ = Describe("OTA Message Handler", func() {
 				pubRead := make(chan bool)
 
 				go func() {
-					pkg, err := packets.ReadPacket(subscriberConn)
+					pkg, err := subscriberConn.Read()
 					Expect(err).NotTo(HaveOccurred())
 					pubPkg, ok = pkg.(*packets.PublishPacket)
 					Expect(ok).To(BeTrue())
@@ -122,15 +121,15 @@ var _ = Describe("OTA Message Handler", func() {
 			Expect(otaState.State).To(Equal(devices.Downloading))
 		})
 		Context("ota with subscribers", func() {
-			var subscriberConn, brokerConn net.Conn
+			var subscriberConn, brokerConn *mqtt.Conn
 
 			BeforeEach(func() {
-				subscriberConn, brokerConn = net.Pipe()
+				subscriberConn, brokerConn = mqtt.Pipe()
 				subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 				subPkg.Topics = []string{"/armada/" + deviceName + "/ota"}
 				go broker.Subscribe(subPkg, brokerConn)
 
-				pkg, err := packets.ReadPacket(subscriberConn)
+				pkg, err := subscriberConn.Read()
 				Expect(err).NotTo(HaveOccurred())
 				_, ok := pkg.(*packets.SubackPacket)
 				Expect(ok).To(BeTrue())
@@ -141,7 +140,7 @@ var _ = Describe("OTA Message Handler", func() {
 				pubRead := make(chan bool)
 
 				go func() {
-					pkg, err := packets.ReadPacket(subscriberConn)
+					pkg, err := subscriberConn.Read()
 					Expect(err).NotTo(HaveOccurred())
 					pubPkg, ok = pkg.(*packets.PublishPacket)
 					Expect(ok).To(BeTrue())
@@ -160,12 +159,12 @@ var _ = Describe("OTA Message Handler", func() {
 	})
 	Describe("on disconnect during download", func() {
 		var devMsgHandler *devices.MessageHandler
-		var deviceServer, deviceClient, subscriberConn, brokerConn net.Conn
+		var deviceServer, deviceClient, subscriberConn, brokerConn *mqtt.Conn
 		var connected chan bool
 
 		JustBeforeEach(func() {
 			devMsgHandler = devices.NewMessageHandler(broker)
-			deviceServer, deviceClient = net.Pipe()
+			deviceServer, deviceClient = mqtt.Pipe()
 
 			Expect(devMsgHandler.GetDeviceState(formationID, deviceName, "ota")).To(BeNil())
 
@@ -175,22 +174,22 @@ var _ = Describe("OTA Message Handler", func() {
 			connPkg.ClientIdentifier = deviceName
 			connPkg.Username = formationID
 			connPkg.UsernameFlag = true
-			Expect(connPkg.Write(deviceClient)).NotTo(HaveOccurred())
+			Expect(deviceClient.Write(connPkg)).NotTo(HaveOccurred())
 
 			connected = make(chan bool)
 			go func() {
-				_, err := packets.ReadPacket(deviceClient)
+				_, err := deviceClient.Read()
 				Expect(err).NotTo(HaveOccurred())
 
 				pkg, err := mqtt.MakePublishPacket(topic, []byte(`{"state": "downloading"}`))
 				Expect(err).NotTo(HaveOccurred())
-				pkg.Write(deviceClient)
+				deviceClient.Write(pkg)
 				Expect(err).NotTo(HaveOccurred())
 
 				connected <- true
 			}()
 
-			subscriberConn, brokerConn = net.Pipe()
+			subscriberConn, brokerConn = mqtt.Pipe()
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 			subPkg.Topics = []string{"/armada/" + deviceName + "/ota"}
 			go func() {
@@ -198,7 +197,7 @@ var _ = Describe("OTA Message Handler", func() {
 				broker.Subscribe(subPkg, brokerConn)
 			}()
 
-			pkg, err := packets.ReadPacket(subscriberConn)
+			pkg, err := subscriberConn.Read()
 			Expect(err).NotTo(HaveOccurred())
 			_, ok := pkg.(*packets.SubackPacket)
 			Expect(ok).To(BeTrue())
@@ -206,19 +205,14 @@ var _ = Describe("OTA Message Handler", func() {
 		It("publishes an error message", func() {
 			deviceClient.Close()
 
+			pkg, err := subscriberConn.Read()
+			Expect(err).NotTo(HaveOccurred())
+
 			var ok bool
 			var pubPkg *packets.PublishPacket
-			//pubRead := make(chan bool)
+			pubPkg, ok = pkg.(*packets.PublishPacket)
+			Expect(ok).To(BeTrue())
 
-			//go func() {
-				pkg, err := packets.ReadPacket(subscriberConn)
-				Expect(err).NotTo(HaveOccurred())
-				pubPkg, ok = pkg.(*packets.PublishPacket)
-				Expect(ok).To(BeTrue())
-			//	pubRead <- true
-			//}()
-
-			//<-pubRead
 			Expect(pubPkg.TopicName).To(Equal("/armada/" + deviceName + "/ota"))
 
 			var otaState devices.OTAState
