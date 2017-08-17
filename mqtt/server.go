@@ -7,25 +7,25 @@ import (
 	"github.com/superscale/spire/config"
 )
 
-// ConnectionHandler will be run in a goroutine for each connection the server accepts
-type ConnectionHandler func(*Conn)
+// SessionHandler will be run in a goroutine for each connection the server accepts
+type SessionHandler func(*Session)
 
 // Server ...
 type Server struct {
 	bind        string
 	listener    net.Listener
-	connHandler ConnectionHandler
+	sessHandler SessionHandler
 }
 
 // NewServer instantiates a new server that listens on the address passed in "bind"
-func NewServer(bind string, connHandler ConnectionHandler) *Server {
-	if connHandler == nil {
+func NewServer(bind string, sessHandler SessionHandler) *Server {
+	if sessHandler == nil {
 		return nil
 	}
 
 	return &Server{
 		bind:        bind,
-		connHandler: connHandler,
+		sessHandler: sessHandler,
 	}
 }
 
@@ -44,7 +44,7 @@ func (s *Server) Run() {
 		if err != nil {
 			log.Println(err)
 		} else {
-			go s.connHandler(NewConn(conn, config.Config.IdleConnectionTimeout))
+			go s.sessHandler(NewSession(conn, config.Config.IdleConnectionTimeout))
 		}
 	}
 }

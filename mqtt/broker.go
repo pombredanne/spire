@@ -5,110 +5,147 @@ import (
 	"log"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"github.com/superscale/spire/config"
 )
 
-type subscriberMap map[string][]*Conn
+// PublishHandler defines the function signature for pub/sub
+type PublishHandler func(topic string, message interface{}) error
+
+type subscriberMap map[string][]PublishHandler
 
 // Broker manages pub/sub
 type Broker struct {
 	l           sync.RWMutex
-	Subscribers subscriberMap
-	idleTimeout time.Duration
+	subscribers subscriberMap
 }
 
 // NewBroker ...
 func NewBroker() *Broker {
 	return &Broker{
-		Subscribers: make(subscriberMap),
-		idleTimeout: config.Config.IdleConnectionTimeout,
+		subscribers: make(subscriberMap),
 	}
 }
 
 // HandleConnection ...
-func (b *Broker) HandleConnection(conn *Conn) {
-	if _, err := conn.Handshake(); err != nil {
+func (b *Broker) HandleConnection(session *Session) {
+	if _, err := session.Handshake(); err != nil {
 		log.Println(err)
 		return
 	}
 
 	for {
-		pkg, err := conn.Read()
+		pkg, err := session.Read()
 		if err != nil {
 			if err != io.EOF {
 				log.Println(err)
-				b.Remove(conn)
-				conn.Close()
+				b.Remove(session.Publish)
+				session.Close()
 			}
 			return
 		}
 
 		switch p := pkg.(type) {
 		case *packets.PingreqPacket:
-			err = conn.SendPong()
+			err = session.SendPingresp()
 		case *packets.PublishPacket:
-			b.Publish(p)
+			b.Publish(p.TopicName, p.Payload)
 		case *packets.SubscribePacket:
-			err = b.Subscribe(p, conn)
+			b.SubscribeAll(p, session.Publish)
+			err = session.SendSuback(p.MessageID)
 		case *packets.UnsubscribePacket:
-			err = b.Unsubscribe(p, conn)
+			b.UnsubscribeAll(p, session.Publish)
+			err = session.SendUnsuback(p.MessageID)
 		default:
-			b.Remove(conn)
-			if err = conn.Close(); err != nil {
+			b.Remove(session.Publish)
+			if err = session.Close(); err != nil {
 				log.Println(err)
 			}
 			return
 		}
 
 		if err != nil {
-			log.Printf("error while handling packet in broker. peer %v: %v", conn.RemoteAddr(), err)
+			log.Printf("error while handling packet in broker. peer %v: %v", session.RemoteAddr(), err)
 		}
 	}
 }
 
-// Subscribe adds the connection to the list of Subscribers to the topic
-func (b *Broker) Subscribe(pkg *packets.SubscribePacket, conn *Conn) error {
-	for _, topic := range pkg.Topics {
-		b.add(topic, conn)
-	}
-
-	sAck := packets.NewControlPacket(packets.Suback).(*packets.SubackPacket)
-	sAck.MessageID = pkg.MessageID
-	return conn.Write(sAck)
-}
-
-// Unsubscribe removes the connection from the list of Subscribers to the topic
-func (b *Broker) Unsubscribe(pkg *packets.UnsubscribePacket, conn *Conn) error {
+// Subscribe ...
+func (b *Broker) Subscribe(topic string, pubHandler PublishHandler) {
 	b.l.Lock()
 	defer b.l.Unlock()
 
-	for _, topic := range pkg.Topics {
-		b.removeFromTopic(topic, conn)
+	subs, exists := b.subscribers[topic]
+	if !exists {
+		b.subscribers[topic] = []PublishHandler{pubHandler}
+		return
 	}
 
-	sAck := packets.NewControlPacket(packets.Unsuback).(*packets.UnsubackPacket)
-	sAck.MessageID = pkg.MessageID
-	return conn.Write(sAck)
+	for _, ph := range subs {
+		if &ph == &pubHandler {
+			return
+		}
+
+		b.subscribers[topic] = append(subs, pubHandler)
+	}
+}
+
+// SubscribeAll ...
+func (b *Broker) SubscribeAll(pkg *packets.SubscribePacket, ph PublishHandler) {
+	for _, topic := range pkg.Topics {
+		b.Subscribe(topic, ph)
+	}
+}
+
+// Unsubscribe ...
+func (b *Broker) Unsubscribe(topic string, ph PublishHandler) {
+	b.l.Lock()
+	defer b.l.Unlock()
+
+	subs, exists := b.subscribers[topic]
+	if !exists {
+		return
+	}
+
+	i := indexOf(subs, ph)
+	if i < 0 {
+		return
+	}
+
+	// from https://github.com/golang/go/wiki/SliceTricks
+	copy(subs[i:], subs[i+1:])
+	subs[len(subs)-1] = nil
+	subs = subs[:len(subs)-1]
+
+	if len(subs) == 0 {
+		delete(b.subscribers, topic)
+	} else {
+		b.subscribers[topic] = subs
+	}
+}
+
+// UnsubscribeAll ...
+func (b *Broker) UnsubscribeAll(pkg *packets.UnsubscribePacket, ph PublishHandler) {
+	for _, topic := range pkg.Topics {
+		b.Unsubscribe(topic, ph)
+	}
 }
 
 // Publish ...
-func (b *Broker) Publish(pkg *packets.PublishPacket) {
-	topics := MatchTopics(pkg.TopicName, b.topics())
+func (b *Broker) Publish(topic string, message interface{}) {
+	topics := MatchTopics(topic, b.topics())
 	if len(topics) == 0 {
 		return
 	}
 
-	subs := []*Conn{}
+	handlers := []PublishHandler{}
 
 	for _, t := range topics {
-		subs = append(subs, b.get(t)...)
+		handlers = append(handlers, b.get(t)...)
 	}
 
-	for _, s := range subs {
-		err := s.Write(pkg)
+	for _, mh := range handlers {
+		err := mh(topic, message)
 		if err != nil {
 			log.Println(err)
 		}
@@ -116,12 +153,9 @@ func (b *Broker) Publish(pkg *packets.PublishPacket) {
 }
 
 // Remove ...
-func (b *Broker) Remove(conn *Conn) {
-	b.l.Lock()
-	defer b.l.Unlock()
-
-	for topic := range b.Subscribers {
-		b.removeFromTopic(topic, conn)
+func (b *Broker) Remove(mh PublishHandler) {
+	for topic := range b.subscribers {
+		b.Unsubscribe(topic, mh)
 	}
 }
 
@@ -143,8 +177,8 @@ func (b *Broker) topics() []string {
 	defer b.l.RUnlock()
 
 	i := 0
-	res := make([]string, len(b.Subscribers))
-	for topic := range b.Subscribers {
+	res := make([]string, len(b.subscribers))
+	for topic := range b.subscribers {
 		res[i] = topic
 		i++
 	}
@@ -152,58 +186,15 @@ func (b *Broker) topics() []string {
 	return res
 }
 
-func (b *Broker) get(topic string) []*Conn {
+func (b *Broker) get(topic string) []PublishHandler {
 	b.l.RLock()
 	defer b.l.RUnlock()
 
-	subs, exists := b.Subscribers[topic]
+	subs, exists := b.subscribers[topic]
 	if !exists {
-		return []*Conn{}
+		return []PublishHandler{}
 	}
 	return subs
-}
-
-func (b *Broker) add(topic string, conn *Conn) {
-	b.l.Lock()
-	defer b.l.Unlock()
-
-	subs, exists := b.Subscribers[topic]
-	if !exists {
-	}
-
-	for _, subConn := range subs {
-		if subConn == conn {
-			return
-		}
-
-		b.Subscribers[topic] = append(subs, subConn)
-	}
-
-	b.Subscribers[topic] = []*Conn{conn}
-}
-
-// ACHTUNG: caller must acquire and release b.l
-func (b *Broker) removeFromTopic(topic string, conn *Conn) {
-	conns, exists := b.Subscribers[topic]
-	if !exists {
-		return
-	}
-
-	i := indexOf(conns, conn)
-	if i < 0 {
-		return
-	}
-
-	// from https://github.com/golang/go/wiki/SliceTricks
-	copy(conns[i:], conns[i+1:])
-	conns[len(conns)-1] = nil
-	conns = conns[:len(conns)-1]
-
-	if len(conns) == 0 {
-		delete(b.Subscribers, topic)
-	} else {
-		b.Subscribers[topic] = conns
-	}
 }
 
 // parameters are the topics split on "/"
@@ -229,9 +220,9 @@ func topicsMatch(t1, t2 []string) bool {
 	return true
 }
 
-func indexOf(conns []*Conn, conn *Conn) int {
-	for i, c := range conns {
-		if c == conn {
+func indexOf(pubHandlers []PublishHandler, pubHandler PublishHandler) int {
+	for i, ph := range pubHandlers {
+		if &ph == &pubHandler {
 			return i
 		}
 	}

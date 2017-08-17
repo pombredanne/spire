@@ -14,18 +14,18 @@ type formationS struct {
 
 // FormationMap ...
 type FormationMap struct {
-	m map[string]*formationS
+	m map[string]formationS
 	l sync.RWMutex
 }
 
 // NewFormationMap ...
 func NewFormationMap() *FormationMap {
 	return &FormationMap{
-		m: make(map[string]*formationS),
+		m: make(map[string]formationS),
 	}
 }
 
-func (fm *FormationMap) get(formationID string) *formationS {
+func (fm *FormationMap) get(formationID string) formationS {
 	fm.l.RLock()
 	defer fm.l.RUnlock()
 	return fm.m[formationID]
@@ -41,7 +41,7 @@ func (fm *FormationMap) PutState(formationID, key string, value interface{}) {
 	if exists {
 		formation.state[key] = value
 	} else {
-		formation = &formationS{
+		formation = formationS{
 			state:   stateMap{key: value},
 			devices: make(deviceStateMap),
 		}
@@ -72,33 +72,48 @@ func (fm *FormationMap) PutDeviceState(formationID, deviceName, key string, valu
 	formation, fExists := fm.m[formationID]
 
 	if !fExists {
-		formation = &formationS{make(stateMap), make(deviceStateMap)}
+		formation = formationS{make(stateMap), make(deviceStateMap)}
 		fm.m[formationID] = formation
 	}
 
-	deviceState, dExists := formation.devices[deviceName]
+	state, dExists := formation.devices[deviceName]
 	if !dExists {
-		deviceState = make(stateMap)
-		formation.devices[deviceName] = deviceState
+		state = make(stateMap)
+		formation.devices[deviceName] = state
 	}
 
-	deviceState[key] = value
+	state[key] = value
 }
 
-// GetDeviceState ...
-func (fm *FormationMap) GetDeviceState(formationID, deviceName, key string) interface{} {
+// GetDeviceState returns the value from the device state for the given key and the devices formationID.
+func (fm *FormationMap) GetDeviceState(deviceName, key string) (interface{}, string) {
 	fm.l.RLock()
 	defer fm.l.RUnlock()
 
+	for formationID, formation := range fm.m {
+
+		state, exists := formation.devices[deviceName]
+		if exists {
+			return state[key], formationID
+		}
+	}
+
+	return nil, ""
+}
+
+// DeleteDeviceState ...
+func (fm *FormationMap) DeleteDeviceState(formationID, deviceName, key string) {
+	fm.l.Lock()
+	defer fm.l.Unlock()
+
 	formation, fExists := fm.m[formationID]
+
 	if !fExists {
-		return nil
+		return
 	}
 
-	deviceState, dExists := formation.devices[deviceName]
-	if !dExists {
-		return nil
+	state, dExists := formation.devices[deviceName]
+	if dExists {
+		delete(state, key)
 	}
-
-	return deviceState[key]
 }

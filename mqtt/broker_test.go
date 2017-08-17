@@ -8,32 +8,33 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/mqtt"
+	"github.com/superscale/spire/testutils"
 )
 
 var _ = Describe("Broker", func() {
 
-	var brokerConn, subscriberConn *mqtt.Conn
+	var brokerSession, subscriberSession *mqtt.Session
 	var broker *mqtt.Broker
 
 	BeforeEach(func() {
-		brokerConn, subscriberConn = mqtt.Pipe()
+		brokerSession, subscriberSession = testutils.Pipe()
 		broker = mqtt.NewBroker()
 	})
 	Context("pingreq", func() {
 		var response packets.ControlPacket
 
 		BeforeEach(func() {
-			go broker.HandleConnection(brokerConn)
+			go broker.HandleConnection(brokerSession)
 
-			subscriberConn.Write(packets.NewControlPacket(packets.Connect))
-			_, err := subscriberConn.Read()
+			subscriberSession.Write(packets.NewControlPacket(packets.Connect))
+			_, err := subscriberSession.Read()
 			Expect(err).NotTo(HaveOccurred())
 
 			pkg := packets.NewControlPacket(packets.Pingreq)
-			err = subscriberConn.Write(pkg)
+			err = subscriberSession.Write(pkg)
 			Expect(err).NotTo(HaveOccurred())
 
-			response, err = subscriberConn.Read()
+			response, err = subscriberSession.Read()
 			Expect(err).NotTo(HaveOccurred())
 		})
 		It("responds with pingresp", func() {
@@ -42,38 +43,24 @@ var _ = Describe("Broker", func() {
 		})
 	})
 	Context("subscribe", func() {
-		var subResponse packets.ControlPacket
-
 		BeforeEach(func() {
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 			subPkg.Topics = []string{"/pylon/1.marsara/up"}
 			subPkg.MessageID = 1337
 
-			go broker.Subscribe(subPkg, brokerConn)
-
-			var err error
-			subResponse, err = subscriberConn.Read()
-			Expect(err).NotTo(HaveOccurred())
+			broker.SubscribeAll(subPkg, brokerSession.Publish)
 		})
 		AfterEach(func() {
-			brokerConn.Close()
-		})
-		It("responds with SUBACK", func() {
-			subAckPkg, isSubAck := subResponse.(*packets.SubackPacket)
-			Expect(isSubAck).To(BeTrue())
-			Expect(subAckPkg.MessageID).To(Equal(uint16(1337)))
+			brokerSession.Close()
 		})
 		Context("publish", func() {
 			var pkg packets.ControlPacket
 
 			BeforeEach(func() {
-				payload := map[string]string{"foo": "bar"}
-				pubPkg, err := mqtt.MakePublishPacket("/pylon/1.marsara/up", payload)
-				Expect(err).NotTo(HaveOccurred())
+				go broker.Publish("/pylon/1.marsara/up", map[string]string{"foo": "bar"})
 
-				go broker.Publish(pubPkg)
-
-				pkg, err = subscriberConn.Read()
+				var err error
+				pkg, err = subscriberSession.Read()
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("forwards the message to subscribers", func() {
@@ -90,41 +77,38 @@ var _ = Describe("Broker", func() {
 		})
 		Context("publish to a non-matching topic", func() {
 			BeforeEach(func() {
-				payload := map[string]string{"foo": "bar"}
-				pubPkg, err := mqtt.MakePublishPacket("/pylon/2.korhal/up", payload)
-				Expect(err).NotTo(HaveOccurred())
-
-				broker.Publish(pubPkg)
+				broker.Publish("/pylon/2.korhal/up", map[string]string{"foo": "bar"})
 
 				go func() {
 					time.Sleep(time.Millisecond * 1)
-					brokerConn.Close()
+					brokerSession.Close()
 				}()
 			})
 			It("does not forward the message", func() {
-				pkg, err := subscriberConn.Read()
+				pkg, err := subscriberSession.Read()
 				Expect(err).To(HaveOccurred())
 				Expect(pkg).To(BeNil())
 			})
 		})
 		Context("unsubscribe", func() {
-			var response packets.ControlPacket
-
 			BeforeEach(func() {
 				unsubPkg := packets.NewControlPacket(packets.Unsubscribe).(*packets.UnsubscribePacket)
 				unsubPkg.Topics = []string{"/pylon/1.marsara/up"}
 				unsubPkg.MessageID = 1338
 
-				go broker.Unsubscribe(unsubPkg, brokerConn)
+				broker.UnsubscribeAll(unsubPkg, brokerSession.Publish)
 
-				var err error
-				response, err = subscriberConn.Read()
-				Expect(err).NotTo(HaveOccurred())
+				broker.Publish("/pylon/2.marsara/up", map[string]string{"foo": "bar"})
+
+				go func() {
+					time.Sleep(time.Millisecond * 1)
+					brokerSession.Close()
+				}()
 			})
-			It("responds with UNSUBACK", func() {
-				unsubAckPkg, ok := response.(*packets.UnsubackPacket)
-				Expect(ok).To(BeTrue())
-				Expect(unsubAckPkg.MessageID).To(Equal(uint16(1338)))
+			It("does not forward the message", func() {
+				pkg, err := subscriberSession.Read()
+				Expect(err).To(HaveOccurred())
+				Expect(pkg).To(BeNil())
 			})
 		})
 	})
@@ -200,6 +184,37 @@ var _ = Describe("Broker", func() {
 				Expect(len(matches)).To(Equal(1))
 				Expect(matches[0]).To(Equal("/armada/1.marsara/#"))
 			})
+		})
+	})
+	Context("multiple subscribers", func() {
+		var sub1, sub2 *testutils.PubSubRecorder
+		var topic = "/foo/bar"
+		var payload = "hi"
+
+		BeforeEach(func() {
+			sub1, sub2 = testutils.NewPubSubRecorder(), testutils.NewPubSubRecorder()
+
+			broker.Subscribe(topic, sub1.Record)
+			broker.Subscribe(topic, sub2.Record)
+
+			broker.Publish(topic, payload)
+		})
+		It("publishes the message to all subscribers", func() {
+			Eventually(func() int {
+				return sub1.Count()
+			}).Should(BeNumerically("==", 1))
+
+			Eventually(func() int {
+				return sub2.Count()
+			}).Should(BeNumerically("==", 1))
+
+			t, msg := sub1.First()
+			Expect(t).To(Equal(topic))
+			Expect(msg).To(Equal(payload))
+
+			t, msg = sub2.First()
+			Expect(t).To(Equal(topic))
+			Expect(msg).To(Equal(payload))
 		})
 	})
 })
