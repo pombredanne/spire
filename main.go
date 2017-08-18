@@ -10,6 +10,7 @@ import (
 	"github.com/superscale/spire/devices/ping"
 	"github.com/superscale/spire/devices/up"
 	"github.com/superscale/spire/mqtt"
+	"github.com/superscale/spire/devices/sentry"
 )
 
 func main() {
@@ -34,7 +35,7 @@ func main() {
 	controlServer.Run()
 }
 
-type registerFn func(*mqtt.Broker, *devices.FormationMap)
+type registerFn func(*mqtt.Broker, *devices.FormationMap) interface{}
 
 func loadMessageHandlers(broker *mqtt.Broker, formations *devices.FormationMap) {
 
@@ -44,6 +45,7 @@ func loadMessageHandlers(broker *mqtt.Broker, formations *devices.FormationMap) 
 		ota.Register,
 		ping.Register,
 		up.Register,
+		sentry.Register,
 	}
 
 	for _, register := range regFns {

@@ -13,12 +13,10 @@ type Handler struct {
 }
 
 // Register ...
-func Register(broker *mqtt.Broker, formations *devices.FormationMap) {
-	handler := &Handler{
-		formations: formations,
-	}
-
-	broker.Subscribe(devices.ConnectTopic, handler.onConnect)
+func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
+	h := &Handler{formations: formations}
+	broker.Subscribe(devices.ConnectTopic, h.onConnect)
+	return h
 }
 
 func (h *Handler) onConnect(_ string, message interface{}) error {

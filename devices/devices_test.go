@@ -33,11 +33,7 @@ var _ = Describe("Device Message Handlers", func() {
 			devMsgHandler.HandleConnection(deviceServer)
 		}()
 
-		connPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
-		connPkg.ClientIdentifier = deviceName
-		connPkg.Username = formationID
-		connPkg.UsernameFlag = true
-		Expect(deviceClient.Write(connPkg)).NotTo(HaveOccurred())
+		Expect(testutils.WriteConnectPacket(formationID, deviceName, "", deviceClient)).NotTo(HaveOccurred())
 
 		var err error
 		response, err = deviceClient.Read()
@@ -53,8 +49,13 @@ var _ = Describe("Device Message Handlers", func() {
 				deviceInfo.Register(broker, formations)
 			})
 			It("fetches device info and adds 'device_os' to device state", func() {
-				deviceInfoState, _ := formations.GetDeviceState(deviceName, "device_info")
-				Expect(deviceInfoState).NotTo(BeNil())
+				var deviceInfoState interface{}
+
+				Eventually(func() interface{} {
+					deviceInfoState, _ = formations.GetDeviceState(deviceName, "device_info")
+					return deviceInfoState
+				}).ShouldNot(BeNil())
+
 				Expect(deviceInfoState.(map[string]interface{})["device_os"]).To(Equal("tplink-archer-c7-lingrush-44"))
 			})
 		})
@@ -66,7 +67,9 @@ var _ = Describe("Device Message Handlers", func() {
 				broker.Subscribe(devices.ConnectTopic, recorder.Record)
 			})
 			It("publishes a connect message for the device", func() {
-				Expect(recorder.Count()).To(BeNumerically("==", 1))
+				Eventually(func() int {
+					return recorder.Count()
+				}).Should(BeNumerically("==", 1))
 
 				topic, raw := recorder.First()
 				Expect(topic).To(Equal(devices.ConnectTopic))
@@ -76,6 +79,7 @@ var _ = Describe("Device Message Handlers", func() {
 
 				Expect(cm.FormationID).To(Equal(formationID))
 				Expect(cm.DeviceName).To(Equal(deviceName))
+				Expect(cm.DeviceInfo).ToNot(BeNil())
 				Expect(cm.DeviceInfo["data"]).ToNot(BeNil())
 			})
 		})

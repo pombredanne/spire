@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/superscale/spire/mqtt"
+	"github.com/eclipse/paho.mqtt.golang/packets"
+	"fmt"
 )
 
 // Pipe ...
@@ -59,12 +61,13 @@ func (r *PubSubRecorder) Last() (string, interface{}) {
 	return r.Get(r.Count()-1)
 }
 
-// HasReceived ...
-func (r *PubSubRecorder) HasReceived(topic string, message interface{}) bool {
-	for i, t := range r.Topics {
-		if t == topic && r.Messages[i] == message {
-			return true
-		}
-	}
-	return false
+// WriteConnectPacket ...
+func WriteConnectPacket(formationID, deviceName, ipAddress string, session *mqtt.Session) error {
+	pkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+
+	pkg.ClientIdentifier = deviceName
+	pkg.UsernameFlag = true
+	pkg.Username = fmt.Sprintf(`{"formation_id": "%s", "ip_address": "%s"}`, formationID, ipAddress)
+
+	return session.Write(pkg)
 }

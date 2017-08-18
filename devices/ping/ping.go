@@ -3,7 +3,6 @@ package ping
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/superscale/spire/devices"
@@ -45,11 +44,12 @@ type Handler struct {
 }
 
 // Register ...
-func Register(broker *mqtt.Broker, formations *devices.FormationMap) {
+func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker, formations}
 
 	broker.Subscribe(devices.ConnectTopic, h.onConnect)
 	broker.Subscribe("/pylon/#/wan/ping", h.onMessage)
+	return h
 }
 
 func (h *Handler) onMessage(topic string, payload interface{}) error {
@@ -112,11 +112,11 @@ func UpdateLosses(stats *Stats, sent, received int64, resetCount bool) {
 	if received == 0 {
 		stats.LossNow = 1.0
 	} else {
-		stats.LossNow = round(1.0-float64(received)/float64(sent), 2)
+		stats.LossNow = devices.Round(1.0-float64(received)/float64(sent), 2)
 	}
 
 	stats.Loss24Hours = (stats.Loss24Hours*float64(stats.Count) + stats.LossNow) / float64(stats.Count+1)
-	stats.Loss24Hours = round(stats.Loss24Hours, 2)
+	stats.Loss24Hours = devices.Round(stats.Loss24Hours, 2)
 
 	stats.Count++
 
@@ -129,12 +129,6 @@ func UpdateLosses(stats *Stats, sent, received int64, resetCount bool) {
 
 	stats.Sent = sent
 	stats.Received = received
-}
-
-func round(f, places float64) float64 {
-	shift := math.Pow(10, places)
-	f = math.Floor(f*shift + .5)
-	return f / shift
 }
 
 // MarshalJSON ...

@@ -23,9 +23,10 @@ type Handler struct {
 }
 
 // Register ...
-func Register(broker *mqtt.Broker, formations *devices.FormationMap) {
+func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{formations}
 	broker.Subscribe("/pylon/#/exception", h.onMessage)
+	return h
 }
 
 func (h *Handler) onMessage(topic string, payload interface{}) error {

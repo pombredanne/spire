@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 
@@ -21,9 +22,10 @@ const DisconnectTopic = "/spire/devices/disconnect"
 
 // ConnectMessage ...
 type ConnectMessage struct {
-	FormationID string
+	FormationID string `json:"formation_id"`
 	DeviceName  string
 	DeviceInfo  map[string]interface{}
+	IPAddress   string `json:"ip_address"`
 }
 
 // DisconnectMessage ...
@@ -34,13 +36,13 @@ type DisconnectMessage struct {
 
 // Handler ...
 type Handler struct {
-	broker     *mqtt.Broker
+	broker *mqtt.Broker
 }
 
 // NewHandler ...
 func NewHandler(broker *mqtt.Broker) *Handler {
 	return &Handler{
-		broker:     broker,
+		broker: broker,
 	}
 }
 
@@ -59,41 +61,22 @@ func ParseTopic(topic string) Topic {
 
 // HandleConnection ...
 func (h *Handler) HandleConnection(session *mqtt.Session) {
-	connectPkg, err := session.ReadConnect()
+
+	cm, err := h.connect(session)
 	if err != nil {
-		log.Println("error while reading packet:", err, ". closing connection")
-		session.Close()
-		return
-	}
-
-	deviceName := connectPkg.ClientIdentifier
-	formationID := connectPkg.Username
-
-	if len(formationID) == 0 {
-		log.Println("CONNECT packet from", session.RemoteAddr(), "is missing formation ID. closing connection")
-		session.Close()
-		return
-	}
-
-	if err := h.deviceConnected(formationID, deviceName, session); err != nil {
 		log.Println(err)
 		session.Close()
 		return
 	}
 
-	session.AcknowledgeConnect()
-	h.handlePackets(formationID, deviceName, session)
-}
-
-func (h *Handler) handlePackets(formationID, deviceName string, session *mqtt.Session) {
 	for {
 		ca, err := session.Read()
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("error while reading packet from %s: %v. closing connection", deviceName, err)
+				log.Printf("error while reading packet from %s: %v. closing connection", cm.DeviceName, err)
 			}
 
-			h.deviceDisconnected(formationID, deviceName, session)
+			h.deviceDisconnected(cm.FormationID, cm.DeviceName, session)
 			return
 		}
 
@@ -109,26 +92,44 @@ func (h *Handler) handlePackets(formationID, deviceName string, session *mqtt.Se
 			h.broker.UnsubscribeAll(ca, session.Publish)
 			err = session.SendUnsuback(ca.MessageID)
 		case *packets.DisconnectPacket:
-			h.deviceDisconnected(formationID, deviceName, session)
+			h.deviceDisconnected(cm.FormationID, cm.DeviceName, session)
 			return
 		default:
-			log.Println("ignoring unsupported message from", deviceName)
+			log.Println("ignoring unsupported message from", cm.DeviceName)
 		}
 
 		if err != nil {
-			log.Printf("error while handling packet from device %s (%v): %v", deviceName, session.RemoteAddr(), err)
+			log.Printf("error while handling packet from device %s (%v): %v", cm.DeviceName, session.RemoteAddr(), err)
 		}
 	}
 }
 
-func (h *Handler) deviceConnected(formationID, deviceName string, session *mqtt.Session) error {
-	info, err := fetchDeviceInfo(deviceName)
+func (h *Handler) connect(session *mqtt.Session) (*ConnectMessage, error) {
+	pkg, err := session.ReadConnect()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("error while reading packet: %v. closing connection", err)
 	}
 
-	h.broker.Publish(ConnectTopic, &ConnectMessage{formationID, deviceName, info})
-	return nil
+	cm := &ConnectMessage{DeviceName: pkg.ClientIdentifier}
+	if err := json.Unmarshal([]byte(pkg.Username), cm); err != nil {
+		return nil, err
+	}
+
+	if len(cm.FormationID) == 0 {
+		return nil, fmt.Errorf("CONNECT packet from %v is missing formation ID. closing connection", session.RemoteAddr())
+	}
+
+	cm.DeviceInfo, err = fetchDeviceInfo(cm.DeviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = session.AcknowledgeConnect(); err != nil {
+		return nil, err
+	}
+
+	h.broker.Publish(ConnectTopic, cm)
+	return cm, nil
 }
 
 func (h *Handler) deviceDisconnected(formationID, deviceName string, session *mqtt.Session) {
@@ -167,4 +168,11 @@ func fetchDeviceInfo(deviceName string) (map[string]interface{}, error) {
 	}
 
 	return info, nil
+}
+
+// Round ...
+func Round(f, places float64) float64 {
+	shift := math.Pow(10, places)
+	f = math.Floor(f*shift + .5)
+	return f / shift
 }

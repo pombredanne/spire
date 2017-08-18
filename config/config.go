@@ -15,6 +15,7 @@ type Params struct {
 	LiberatorBaseURL      string        `env:"LIBERATOR_BASE_URL"  envDefault:"https://api.superscale.io"`
 	LiberatorJWTToken     string        `env:"LIBERATOR_JWT_TOKEN,required"`
 	IdleConnectionTimeout time.Duration `env:"IDLE_CONNECTION_TIMEOUT"  envDefault:"30s"`
+	SentryDynamoDBTable   string        `env:"SENTRY_DYNAMODB_TABLE,required"`
 }
 
 // Config is the global handle for accessing runtime configuration
