@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/superscale/spire/config"
+	"io"
 )
 
 // SessionHandler will be run in a goroutine for each connection the server accepts
@@ -33,7 +34,9 @@ func NewServer(bind string, sessHandler SessionHandler) *Server {
 func (s *Server) Run() {
 	var err error
 	if s.listener, err = net.Listen("tcp", s.bind); err != nil {
-		log.Println(err)
+		if err != io.EOF {
+			log.Println(err)
+		}
 		return
 	}
 
@@ -42,7 +45,9 @@ func (s *Server) Run() {
 		conn, err := s.listener.Accept()
 
 		if err != nil {
-			log.Println(err)
+			if err != io.EOF {
+				log.Println(err)
+			}
 		} else {
 			go s.sessHandler(NewSession(conn, config.Config.IdleConnectionTimeout))
 		}

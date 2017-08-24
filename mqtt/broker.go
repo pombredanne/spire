@@ -39,9 +39,9 @@ func (b *Broker) HandleConnection(session *Session) {
 		if err != nil {
 			if err != io.EOF {
 				log.Println(err)
-				b.Remove(session.Publish)
 				session.Close()
 			}
+			b.Remove(session.Publish)
 			return
 		}
 

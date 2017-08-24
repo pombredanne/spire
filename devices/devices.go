@@ -107,6 +107,9 @@ func (h *Handler) HandleConnection(session *mqtt.Session) {
 func (h *Handler) connect(session *mqtt.Session) (*ConnectMessage, error) {
 	pkg, err := session.ReadConnect()
 	if err != nil {
+		if err == io.EOF {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("error while reading packet: %v. closing connection", err)
 	}
 
