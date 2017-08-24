@@ -18,7 +18,7 @@ var _ = Describe("Stargate Message Handler", func() {
 	var formations *devices.FormationMap
 	var recorder *testutils.PubSubRecorder
 
-	var deviceTopicPorts = "/pylon/1.marsara/stargate/ports"
+	var deviceTopicPorts = "/pylon/1.marsara/stargate/port"
 	var controlTopicPorts = "/matriarch/1.marsara/stargate/ports"
 	var deviceTopicSystemImages = "/pylon/1.marsara/stargate/systemimaged"
 	var controlTopicSystemImages = "/matriarch/1.marsara/stargate/system_images"

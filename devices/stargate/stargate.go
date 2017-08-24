@@ -148,7 +148,7 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 	}
 
 	broker.Subscribe(devices.ConnectTopic, h.onConnect)
-	broker.Subscribe("/pylon/#/stargate/ports", h.onPortsMessage)
+	broker.Subscribe("/pylon/#/stargate/port", h.onPortsMessage)
 	broker.Subscribe("/pylon/#/stargate/systemimaged", h.onSystemImageMessage)
 	return h
 }
