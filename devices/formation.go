@@ -15,6 +15,7 @@ type formationS struct {
 // FormationMap ...
 type FormationMap struct {
 	m map[string]formationS
+	d map[string]string // device name -> formation ID
 	l sync.RWMutex
 }
 
@@ -22,6 +23,7 @@ type FormationMap struct {
 func NewFormationMap() *FormationMap {
 	return &FormationMap{
 		m: make(map[string]formationS),
+		d: make(map[string]string),
 	}
 }
 
@@ -83,22 +85,25 @@ func (fm *FormationMap) PutDeviceState(formationID, deviceName, key string, valu
 	}
 
 	state[key] = value
+	fm.d[deviceName] = formationID
 }
 
-// GetDeviceState returns the value from the device state for the given key and the devices formationID.
-func (fm *FormationMap) GetDeviceState(deviceName, key string) (interface{}, string) {
+// GetDeviceState ...
+func (fm *FormationMap) GetDeviceState(deviceName, key string) interface{} {
 	fm.l.RLock()
 	defer fm.l.RUnlock()
 
-	for formationID, formation := range fm.m {
+	if formationID, exists := fm.d[deviceName]; exists {
 
-		state, exists := formation.devices[deviceName]
-		if exists {
-			return state[key], formationID
+		if formation, exists := fm.m[formationID]; exists {
+
+			if state, exists := formation.devices[deviceName]; exists {
+				return state[key]
+			}
 		}
 	}
 
-	return nil, ""
+	return nil
 }
 
 // DeleteDeviceState ...
@@ -116,4 +121,20 @@ func (fm *FormationMap) DeleteDeviceState(formationID, deviceName, key string) {
 	if dExists {
 		delete(state, key)
 	}
+
+	delete(fm.d, deviceName)
+}
+
+// FormationID returns the devices formation ID
+func (fm *FormationMap) FormationID(deviceName string) string {
+	fm.l.RLock()
+	defer fm.l.RUnlock()
+	return fm.d[deviceName]
+}
+
+// AddDevice ...
+func (fm *FormationMap) AddDevice(deviceName, formationID string) {
+	fm.l.Lock()
+	defer fm.l.Unlock()
+	fm.d[deviceName] = formationID
 }

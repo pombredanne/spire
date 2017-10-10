@@ -1,12 +1,12 @@
 package testutils
 
 import (
+	"fmt"
 	"net"
 	"time"
 
-	"github.com/superscale/spire/mqtt"
 	"github.com/eclipse/paho.mqtt.golang/packets"
-	"fmt"
+	"github.com/superscale/spire/mqtt"
 )
 
 // Pipe ...
@@ -58,7 +58,7 @@ func (r *PubSubRecorder) First() (string, interface{}) {
 
 // Last ...
 func (r *PubSubRecorder) Last() (string, interface{}) {
-	return r.Get(r.Count()-1)
+	return r.Get(r.Count() - 1)
 }
 
 // WriteConnectPacket ...

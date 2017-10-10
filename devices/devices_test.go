@@ -25,7 +25,7 @@ var _ = Describe("Device Message Handlers", func() {
 	BeforeEach(func() {
 		broker = mqtt.NewBroker()
 		formations = devices.NewFormationMap()
-		devMsgHandler = devices.NewHandler(broker)
+		devMsgHandler = devices.NewHandler(formations, broker)
 		deviceServer, deviceClient = testutils.Pipe()
 	})
 	JustBeforeEach(func() {
@@ -44,6 +44,9 @@ var _ = Describe("Device Message Handlers", func() {
 			_, ok := response.(*packets.ConnackPacket)
 			Expect(ok).To(BeTrue())
 		})
+		It("stores formation ID for device", func() {
+			Expect(formations.FormationID(deviceName)).To(Equal(formationID))
+		})
 		Describe("device info", func() {
 			BeforeEach(func() {
 				deviceInfo.Register(broker, formations)
@@ -52,7 +55,7 @@ var _ = Describe("Device Message Handlers", func() {
 				var deviceInfoState interface{}
 
 				Eventually(func() interface{} {
-					deviceInfoState, _ = formations.GetDeviceState(deviceName, "device_info")
+					deviceInfoState = formations.GetDeviceState(deviceName, "device_info")
 					return deviceInfoState
 				}).ShouldNot(BeNil())
 

@@ -55,7 +55,7 @@ var _ = Describe("Sentry Message Handler", func() {
 			broker.Publish(devices.ConnectTopic, m)
 		})
 		It("adds the ip address to the device state", func() {
-			ip, _ := formations.GetDeviceState(deviceName, sentry.ForwardedIP)
+			ip := formations.GetDeviceState(deviceName, sentry.ForwardedIP)
 			Expect(ip).To(Equal(ipAddress))
 		})
 	})

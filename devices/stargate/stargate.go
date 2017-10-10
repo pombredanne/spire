@@ -110,9 +110,9 @@ type SystemImageState struct {
 // NewSystemImageState ...
 func NewSystemImageState(id, vendor, product string) *SystemImageState {
 	return &SystemImageState{
-		ID: id,
-		State: Start,
-		Vendor: vendor,
+		ID:      id,
+		State:   Start,
+		Vendor:  vendor,
 		Product: product,
 	}
 }
@@ -147,21 +147,9 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 		formations: formations,
 	}
 
-	broker.Subscribe(devices.ConnectTopic, h.onConnect)
 	broker.Subscribe("/pylon/#/stargate/port", h.onPortsMessage)
 	broker.Subscribe("/pylon/#/stargate/systemimaged", h.onSystemImageMessage)
 	return h
-}
-
-func (h *Handler) onConnect(topic string, payload interface{}) error {
-	cm := payload.(*devices.ConnectMessage)
-
-	if s, _ := h.formations.GetDeviceState(cm.DeviceName, Key); s != nil {
-		return nil
-	}
-
-	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, Key, NewState())
-	return nil
 }
 
 func (h *Handler) onPortsMessage(topic string, payload interface{}) error {
@@ -175,17 +163,13 @@ func (h *Handler) onPortsMessage(topic string, payload interface{}) error {
 		return err
 	}
 
-	t := devices.ParseTopic(topic)
-	s, _ := h.formations.GetDeviceState(t.DeviceName, Key)
-	state, ok := s.(*State)
-	if !ok {
-		return fmt.Errorf("[stargate] missing or corrupt state for device %s", t.DeviceName)
-	}
+	deviceName := devices.ParseTopic(topic).DeviceName
+	state := h.getState(deviceName)
 
 	if msg.Up != nil || (msg.TFTPD.Listening != nil && *msg.TFTPD.Listening == true) {
-		h.handleUp(t.DeviceName, state, msg.Port)
+		h.handleUp(deviceName, state, msg.Port)
 	} else {
-		ps := h.getPortState(state, t.DeviceName, msg.Port)
+		ps := h.getPortState(state, deviceName, msg.Port)
 
 		if msg.TFTPD.Request != nil && msg.TFTPD.Total != nil {
 			ps.File = *msg.TFTPD.Request
@@ -211,7 +195,8 @@ func (h *Handler) onPortsMessage(topic string, payload interface{}) error {
 		}
 	}
 
-	h.broker.Publish(fmt.Sprintf("/matriarch/%s/stargate/ports", t.DeviceName), state.Ports)
+	h.formations.PutDeviceState(h.formations.FormationID(deviceName), deviceName, Key, state)
+	h.broker.Publish(fmt.Sprintf("/matriarch/%s/stargate/ports", deviceName), state.Ports)
 	return nil
 }
 
@@ -223,6 +208,14 @@ func (h *Handler) handleUp(deviceName string, state *State, port int) {
 	} else {
 		state.Ports[port] = NewPortState()
 	}
+}
+
+func (h *Handler) getState(deviceName string) *State {
+	state, ok := h.formations.GetDeviceState(deviceName, Key).(*State)
+	if !ok {
+		return NewState()
+	}
+	return state
 }
 
 func (h *Handler) getPortState(state *State, deviceName string, port int) *PortState {
@@ -248,19 +241,15 @@ func (h *Handler) onSystemImageMessage(topic string, payload interface{}) error 
 		return err
 	}
 
-	t := devices.ParseTopic(topic)
-	s, _ := h.formations.GetDeviceState(t.DeviceName, Key)
-	state, ok := s.(*State)
-	if !ok {
-		return fmt.Errorf("[stargate] missing or corrupt state for device %s", t.DeviceName)
-	}
+	deviceName := devices.ParseTopic(topic).DeviceName
+	state := h.getState(deviceName)
 
 	if msg.Download == API {
 		state.SystemImages[msg.ID] = NewSystemImageState(msg.ID, msg.Vendor, msg.Product)
 	} else {
 		imgState, exists := state.SystemImages[msg.ID]
 		if !exists {
-			return fmt.Errorf("missing system image state for image %s on device %s", msg.ID, t.DeviceName)
+			return fmt.Errorf("missing system image state for image %s on device %s", msg.ID, deviceName)
 		}
 
 		switch msg.Download {
@@ -276,6 +265,7 @@ func (h *Handler) onSystemImageMessage(topic string, payload interface{}) error 
 		}
 	}
 
-	h.broker.Publish(fmt.Sprintf("/matriarch/%s/stargate/system_images", t.DeviceName), state.SystemImages)
+	h.formations.PutDeviceState(h.formations.FormationID(deviceName), deviceName, Key, state)
+	h.broker.Publish(fmt.Sprintf("/matriarch/%s/stargate/system_images", deviceName), state.SystemImages)
 	return nil
 }

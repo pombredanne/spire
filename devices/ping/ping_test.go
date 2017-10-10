@@ -35,7 +35,7 @@ var _ = Describe("Ping Message Handler", func() {
 		var firstPingTimestamp time.Time
 
 		BeforeEach(func() {
-			pingState, _ := formations.GetDeviceState(deviceName, "ping")
+			pingState := formations.GetDeviceState(deviceName, ping.Key)
 			Expect(pingState).To(BeNil())
 
 			firstPingTimestamp = time.Now().Add(-10 * time.Minute)
@@ -71,12 +71,12 @@ var _ = Describe("Ping Message Handler", func() {
 			broker.Publish(deviceTopic, payload)
 		})
 		It("adds ping state to the device state", func() {
-			state, _ := formations.GetDeviceState(deviceName, "ping")
+			state := formations.GetDeviceState(deviceName, ping.Key)
 			_, ok := state.(*ping.Message)
 			Expect(ok).To(BeTrue())
 		})
 		It("initializes ping state with the values from the message", func() {
-			state, _ := formations.GetDeviceState(deviceName, "ping")
+			state := formations.GetDeviceState(deviceName, ping.Key)
 			ps, ok := state.(*ping.Message)
 			Expect(ok).To(BeTrue())
 
@@ -162,7 +162,7 @@ var _ = Describe("Ping Message Handler", func() {
 				}
 			})
 			It("keeps counts and calculates losses", func() {
-				state, _ := formations.GetDeviceState(deviceName, "ping")
+				state := formations.GetDeviceState(deviceName, ping.Key)
 				ps, ok := state.(*ping.Message)
 				Expect(ok).To(BeTrue())
 

@@ -36,13 +36,15 @@ type DisconnectMessage struct {
 
 // Handler ...
 type Handler struct {
-	broker *mqtt.Broker
+	formations *FormationMap
+	broker     *mqtt.Broker
 }
 
 // NewHandler ...
-func NewHandler(broker *mqtt.Broker) *Handler {
+func NewHandler(formations *FormationMap, broker *mqtt.Broker) *Handler {
 	return &Handler{
-		broker: broker,
+		formations: formations,
+		broker:     broker,
 	}
 }
 
@@ -65,7 +67,7 @@ func (h *Handler) HandleConnection(session *mqtt.Session) {
 	cm, err := h.connect(session)
 	if err != nil {
 		if err != io.EOF {
-			log.Println(err)
+			log.Println("failed to establish a session:", err)
 			session.Close()
 		}
 		return
@@ -129,6 +131,7 @@ func (h *Handler) connect(session *mqtt.Session) (*ConnectMessage, error) {
 		return nil, err
 	}
 
+	h.formations.AddDevice(cm.DeviceName, cm.FormationID)
 	if err = session.AcknowledgeConnect(); err != nil {
 		return nil, err
 	}

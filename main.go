@@ -8,9 +8,10 @@ import (
 	"github.com/superscale/spire/devices/exception"
 	"github.com/superscale/spire/devices/ota"
 	"github.com/superscale/spire/devices/ping"
+	"github.com/superscale/spire/devices/sentry"
+	"github.com/superscale/spire/devices/stations"
 	"github.com/superscale/spire/devices/up"
 	"github.com/superscale/spire/mqtt"
-	"github.com/superscale/spire/devices/sentry"
 )
 
 func main() {
@@ -27,7 +28,7 @@ func main() {
 	formations := devices.NewFormationMap()
 	loadMessageHandlers(broker, formations)
 
-	devHandler := devices.NewHandler(broker)
+	devHandler := devices.NewHandler(formations, broker)
 	devicesServer := mqtt.NewServer(config.Config.DevicesBind, devHandler.HandleConnection)
 	go devicesServer.Run()
 
@@ -46,6 +47,7 @@ func loadMessageHandlers(broker *mqtt.Broker, formations *devices.FormationMap) 
 		ping.Register,
 		up.Register,
 		sentry.Register,
+		stations.Register,
 	}
 
 	for _, register := range regFns {

@@ -59,13 +59,10 @@ func (h *Handler) onMessage(topic string, payload interface{}) error {
 		return err
 	}
 
-	t := devices.ParseTopic(topic)
-
-	// FIXME We only call this to get the formation ID for the device. It should be part of the topic.
-	_, formationID := h.formations.GetDeviceState(t.DeviceName, "ota")
-
-	h.formations.PutDeviceState(formationID, t.DeviceName, "ota", msg)
-	h.publish(t.DeviceName, msg)
+	deviceName := devices.ParseTopic(topic).DeviceName
+	formationID := h.formations.FormationID(deviceName)
+	h.formations.PutDeviceState(formationID, deviceName, "ota", msg)
+	h.publish(deviceName, msg)
 	return nil
 }
 
@@ -82,7 +79,7 @@ func (h *Handler) onConnect(_ string, payload interface{}) error {
 func (h *Handler) onDisconnect(_ string, payload interface{}) error {
 	dm := payload.(*devices.DisconnectMessage)
 
-	rawState, _ := h.formations.GetDeviceState(dm.DeviceName, "ota")
+	rawState := h.formations.GetDeviceState(dm.DeviceName, "ota")
 	state, ok := rawState.(*Message)
 
 	if ok && state.State == Downloading {

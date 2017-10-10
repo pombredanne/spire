@@ -92,7 +92,7 @@ func (h *Handler) onMessage(topic string, payload interface{}) error {
 }
 
 func (h *Handler) getForwardedIP(deviceName string) string {
-	raw, _ := h.formations.GetDeviceState(deviceName, ForwardedIP)
+	raw := h.formations.GetDeviceState(deviceName, ForwardedIP)
 	if raw != nil {
 		if ip, ok := raw.(string); ok {
 			return ip

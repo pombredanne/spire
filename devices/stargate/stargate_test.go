@@ -34,26 +34,6 @@ var _ = Describe("Stargate Message Handler", func() {
 		broker.Subscribe(controlTopicPorts, recorder.Record)
 		broker.Subscribe(controlTopicSystemImages, recorder.Record)
 	})
-	Describe("connect", func() {
-		BeforeEach(func() {
-			state, _ := formations.GetDeviceState(deviceName, stargate.Key)
-			Expect(state).To(BeNil())
-
-			broker.Publish(devices.ConnectTopic, &devices.ConnectMessage{
-				FormationID: formationID,
-				DeviceName:  deviceName,
-			})
-		})
-		It("adds an entry to the device state", func() {
-			rawState, _ := formations.GetDeviceState(deviceName, stargate.Key)
-			Expect(rawState).NotTo(BeNil())
-
-			state, ok := rawState.(*stargate.State)
-			Expect(ok).To(BeTrue())
-			Expect(len(state.Ports)).To(BeNumerically("==", 0))
-			Expect(len(state.SystemImages)).To(BeNumerically("==", 0))
-		})
-	})
 	Describe("handling port messages", func() {
 		var state *stargate.State
 		var portStateAfter *stargate.PortState
@@ -70,7 +50,7 @@ var _ = Describe("Stargate Message Handler", func() {
 
 			broker.Publish(deviceTopicPorts, payload)
 
-			rawState, _ := formations.GetDeviceState(deviceName, stargate.Key)
+			rawState := formations.GetDeviceState(deviceName, stargate.Key)
 			Expect(rawState).NotTo(BeNil())
 
 			var ok bool

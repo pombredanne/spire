@@ -9,6 +9,8 @@ import (
 	"github.com/superscale/spire/mqtt"
 )
 
+const Key = "ping"
+
 // Stats ...
 type Stats struct {
 	Sent        int64   `json:"sent"`
@@ -47,7 +49,6 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker, formations}
 
-	broker.Subscribe(devices.ConnectTopic, h.onConnect)
 	broker.Subscribe("/pylon/#/wan/ping", h.onMessage)
 	return h
 }
@@ -63,26 +64,17 @@ func (h *Handler) onMessage(topic string, payload interface{}) error {
 		return err
 	}
 
-	t := devices.ParseTopic(topic)
-	rawState, formationID := h.formations.GetDeviceState(t.DeviceName, "ping")
-	currentState, _ := rawState.(*Message)
-	newState := updatePingState(currentState, msg)
-
-	h.formations.PutDeviceState(formationID, t.DeviceName, "ping", newState)
-	h.broker.Publish(fmt.Sprintf("/armada/%s/wan/ping", t.DeviceName), newState)
-	return nil
-}
-
-func (h *Handler) onConnect(_ string, payload interface{}) error {
-	cm := payload.(*devices.ConnectMessage)
-
-	if state, _ := h.formations.GetDeviceState(cm.DeviceName, "ping"); state != nil {
-		return nil
+	deviceName := devices.ParseTopic(topic).DeviceName
+	var currentState *Message
+	rawState := h.formations.GetDeviceState(deviceName, Key)
+	if rawState != nil {
+		currentState = rawState.(*Message)
 	}
 
-	// FIXME Init ping state if we haven't seen the device before.
-	// Another workaround for not having the formation ID in onMessage().
-	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, "ping", &Message{})
+	newState := updatePingState(currentState, msg)
+	formationID := h.formations.FormationID(deviceName)
+	h.formations.PutDeviceState(formationID, deviceName, Key, newState)
+	h.broker.Publish(fmt.Sprintf("/armada/%s/wan/ping", deviceName), newState)
 	return nil
 }
 

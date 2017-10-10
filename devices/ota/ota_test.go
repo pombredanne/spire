@@ -33,7 +33,7 @@ var _ = Describe("OTA Message Handler", func() {
 			broker.Publish(devices.ConnectTopic, m)
 		})
 		It("sets state to 'default'", func() {
-			rawState, _ := formations.GetDeviceState(deviceName, "ota")
+			rawState := formations.GetDeviceState(deviceName, "ota")
 			state, ok := rawState.(*ota.Message)
 			Expect(ok).To(BeTrue())
 			Expect(state.State).To(Equal(ota.Default))
@@ -62,7 +62,7 @@ var _ = Describe("OTA Message Handler", func() {
 			broker.Publish("/pylon/1.marsara/ota", payload)
 		})
 		It("updates device state", func() {
-			rawState, _ := formations.GetDeviceState(deviceName, "ota")
+			rawState := formations.GetDeviceState(deviceName, "ota")
 			state, ok := rawState.(*ota.Message)
 			Expect(ok).To(BeTrue())
 			Expect(state.State).To(Equal(ota.Downloading))

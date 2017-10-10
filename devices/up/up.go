@@ -37,7 +37,7 @@ func (h *Handler) onConnect(_ string, payload interface{}) error {
 func (h *Handler) onDisconnect(_ string, payload interface{}) error {
 	cm := payload.(*devices.DisconnectMessage)
 
-	r, _ := h.formations.GetDeviceState(cm.DeviceName, "cancelUpFn")
+	r := h.formations.GetDeviceState(cm.DeviceName, "cancelUpFn")
 	cancelFn, ok := r.(context.CancelFunc)
 	if !ok {
 		return fmt.Errorf("cannot cancel goroutine that publishes 'up' state for device %s", cm.DeviceName)
