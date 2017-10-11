@@ -27,7 +27,8 @@ node  {
 
             withCredentials([string(credentialsId: 'spire-docker-hub', variable: 'DOCKER_HUB_API_KEY')]) {
                 sh("docker login -u haikoschol -p $DOCKER_HUB_API_KEY")
-                sh("docker push haikoschol/${service}")
+                sh("docker push haikoschol/${service}:${vers}")
+                sh("docker push haikoschol/${service}:latest")
             }
         }
     }
