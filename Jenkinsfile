@@ -1,32 +1,34 @@
 node  {
-    sh("rm ~/.dockercfg")
-    env.AWS_ECR_LOGIN=true
+    sh("rm -f ~/.dockercfg")
+ 
+    def service = "spire"
+    def image
 
-    docker.withRegistry("https://531572303926.dkr.ecr.eu-west-1.amazonaws.com/superscale/", "ecr:eu-west-1:aws") {
-        def service = "spire"
-        def image
+    stage("Checkout") {
+        checkout([
+            $class: 'GitSCM',
+            branches: scm.branches,
+            doGenerateSubmoduleConfigurations: scm.doGenerateSubmoduleConfigurations,
+            userRemoteConfigs: scm.userRemoteConfigs,
+            extensions: scm.extensions + [[$class: 'SubmoduleOption', disableSubmodules: false, parentCredentials: true, recursiveSubmodules: true, reference: '', trackingSubmodules: false], [$class: 'CloneOption', depth: 0, noTags: false, reference: '', shallow: false]]
+        ])
+    }
+    stage("Build Docker Image") {
+        image = docker.build("haikoschol/${service}")
+    }
+    stage("Run Tests") {
+        image.run('', '"/go/bin/ginkgo" "-r" "-cover"')
+    }
+    if (env.BRANCH_NAME == "master") {
+        stage("Publish Docker Image") {
+            def vers = sh(returnStdout: true, script: 'git describe --tags').trim()
+            image.tag "${vers}"
+            image.tag "latest"
 
-        stage("Checkout") {
-            checkout([
-                $class: 'GitSCM',
-                branches: scm.branches,
-                doGenerateSubmoduleConfigurations: scm.doGenerateSubmoduleConfigurations,
-                userRemoteConfigs: scm.userRemoteConfigs,
-                extensions: scm.extensions + [[$class: 'SubmoduleOption', disableSubmodules: false, parentCredentials: true, recursiveSubmodules: true, reference: '', trackingSubmodules: false]]
-            ])
-        }
-        stage("Build docker") {
-            image = docker.build("superscale/${service}")
-        }
-        stage("Run Tests") {
-            image.run('', '"/go/bin/ginkgo" "-r" "-cover"')
-        }
-        if (env.BRANCH_NAME == "master") {
-           stage("Publish ECR") {
-                def vers = sh(returnStdout: true, script: 'git describe --tags').trim()
-                image.push "${vers}"
-                image.push "latest"
-           }
+            withCredentials([string(credentialsId: 'spire-docker-hub', variable: 'DOCKER_HUB_API_KEY')]) {
+                sh("docker login -u haikoschol -p $DOCKER_HUB_API_KEY")
+                sh("docker push haikoschol/${service}")
+            }
         }
     }
 }
