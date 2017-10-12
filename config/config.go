@@ -8,14 +8,14 @@ import (
 
 // Params defines all possible config params
 type Params struct {
-	Environment           string        `env:"ENV"  envDefault:"prod"`
-	DevicesBind           string        `env:"DEVICES_BIND"  envDefault:":1883"`
-	ControlBind           string        `env:"CONTROL_BIND"  envDefault:":1884"`
-	BugsnagKey            string        `env:"BUGSNAG_KEY"`
-	LiberatorBaseURL      string        `env:"LIBERATOR_BASE_URL"  envDefault:"https://api.superscale.io"`
-	LiberatorJWTToken     string        `env:"LIBERATOR_JWT_TOKEN,required"`
-	IdleConnectionTimeout time.Duration `env:"IDLE_CONNECTION_TIMEOUT"  envDefault:"30s"`
-	SentryDynamoDBTable   string        `env:"SENTRY_DYNAMODB_TABLE,required"`
+	Environment           string        `env:"SPIRE_ENV"  envDefault:"prod"`
+	DevicesBind           string        `env:"SPIRE_DEVICES_BIND"  envDefault:":1883"`
+	ControlBind           string        `env:"SPIRE_CONTROL_BIND"  envDefault:":1884"`
+	BugsnagKey            string        `env:"SPIRE_BUGSNAG_KEY"`
+	LiberatorBaseURL      string        `env:"SPIRE_LIBERATOR_BASE_URL"  envDefault:"https://api.superscale.io"`
+	LiberatorJWTToken     string        `env:"SPIRE_LIBERATOR_JWT_TOKEN,required"`
+	IdleConnectionTimeout time.Duration `env:"SPIRE_IDLE_CONNECTION_TIMEOUT"  envDefault:"30s"`
+	SentryDynamoDBTable   string        `env:"SPIRE_SENTRY_DYNAMODB_TABLE,required"`
 }
 
 // Config is the global handle for accessing runtime configuration
