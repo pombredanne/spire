@@ -19,8 +19,8 @@ var _ = Describe("Ping Message Handler", func() {
 	var recorder *testutils.PubSubRecorder
 
 	var deviceName = "1.marsara"
-	var deviceTopic = "/pylon/1.marsara/wan/ping"
-	var controlTopic = "/armada/1.marsara/wan/ping"
+	var deviceTopic = "pylon/1.marsara/wan/ping"
+	var controlTopic = "armada/1.marsara/wan/ping"
 	var payload []byte
 
 	BeforeEach(func() {

@@ -45,7 +45,7 @@ var _ = Describe("Broker", func() {
 	Context("subscribe", func() {
 		BeforeEach(func() {
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
-			subPkg.Topics = []string{"/pylon/1.marsara/up"}
+			subPkg.Topics = []string{"pylon/1.marsara/up"}
 			subPkg.MessageID = 1337
 
 			broker.SubscribeAll(subPkg, brokerSession.Publish)
@@ -57,7 +57,7 @@ var _ = Describe("Broker", func() {
 			var pkg packets.ControlPacket
 
 			BeforeEach(func() {
-				go broker.Publish("/pylon/1.marsara/up", map[string]string{"foo": "bar"})
+				go broker.Publish("pylon/1.marsara/up", map[string]string{"foo": "bar"})
 
 				var err error
 				pkg, err = subscriberSession.Read()
@@ -67,7 +67,7 @@ var _ = Describe("Broker", func() {
 				pubPkg, ok := pkg.(*packets.PublishPacket)
 				Expect(ok).To(BeTrue())
 
-				Expect(pubPkg.TopicName).To(Equal("/pylon/1.marsara/up"))
+				Expect(pubPkg.TopicName).To(Equal("pylon/1.marsara/up"))
 
 				var payload map[string]string
 				err := json.Unmarshal(pubPkg.Payload, &payload)
@@ -77,7 +77,7 @@ var _ = Describe("Broker", func() {
 		})
 		Context("publish to a non-matching topic", func() {
 			BeforeEach(func() {
-				broker.Publish("/pylon/2.korhal/up", map[string]string{"foo": "bar"})
+				broker.Publish("pylon/2.korhal/up", map[string]string{"foo": "bar"})
 
 				go func() {
 					time.Sleep(time.Millisecond * 1)
@@ -93,12 +93,12 @@ var _ = Describe("Broker", func() {
 		Context("unsubscribe", func() {
 			BeforeEach(func() {
 				unsubPkg := packets.NewControlPacket(packets.Unsubscribe).(*packets.UnsubscribePacket)
-				unsubPkg.Topics = []string{"/pylon/1.marsara/up"}
+				unsubPkg.Topics = []string{"pylon/1.marsara/up"}
 				unsubPkg.MessageID = 1338
 
 				broker.UnsubscribeAll(unsubPkg, brokerSession.Publish)
 
-				broker.Publish("/pylon/2.marsara/up", map[string]string{"foo": "bar"})
+				broker.Publish("pylon/2.marsara/up", map[string]string{"foo": "bar"})
 
 				go func() {
 					time.Sleep(time.Millisecond * 1)
@@ -122,42 +122,42 @@ var _ = Describe("Broker", func() {
 		})
 		Context("exact match", func() {
 			BeforeEach(func() {
-				publishTopic = "/armada/1.marsara/up"
+				publishTopic = "armada/1.marsara/up"
 
 				topics = []string{
-					"/armada/2.zenn/stations",
-					"/armada/1.marsara/ota",
-					"/armada/1.marsara/up",
-					"/pylon/1.marsara/up",
+					"armada/2.zenn/stations",
+					"armada/1.marsara/ota",
+					"armada/1.marsara/up",
+					"pylon/1.marsara/up",
 				}
 			})
 			It("returns the matching topic", func() {
 				Expect(len(matches)).To(Equal(1))
-				Expect(matches[0]).To(Equal("/armada/1.marsara/up"))
+				Expect(matches[0]).To(Equal("armada/1.marsara/up"))
 			})
 		})
 		Context("with multi-level wildcard '#' at the end", func() {
 			BeforeEach(func() {
-				publishTopic = "/armada/1.marsara/up"
+				publishTopic = "armada/1.marsara/up"
 
 				topics = []string{
-					"/armada/2.zenn/stations",
-					"/armada/1.marsara/ota",
-					"/armada/1.marsara/#",
-					"/armada/3.korhal/#",
+					"armada/2.zenn/stations",
+					"armada/1.marsara/ota",
+					"armada/1.marsara/#",
+					"armada/3.korhal/#",
 				}
 			})
 			It("matches", func() {
 				Expect(len(matches)).To(Equal(1))
-				Expect(matches[0]).To(Equal("/armada/1.marsara/#"))
+				Expect(matches[0]).To(Equal("armada/1.marsara/#"))
 			})
 		})
 		Context("with multi-level wildcards in the middle", func() {
 			BeforeEach(func() {
-				publishTopic = "/armada/1.marsara/up"
+				publishTopic = "armada/1.marsara/up"
 
 				topics = []string{
-					"/armada/#/up",
+					"armada/#/up",
 				}
 			})
 			It("does not match", func() {
@@ -166,26 +166,26 @@ var _ = Describe("Broker", func() {
 		})
 		Context("with single-level wildcards", func() {
 			BeforeEach(func() {
-				publishTopic = "/armada/1.marsara/sys/facts"
+				publishTopic = "armada/1.marsara/sys/facts"
 
 				topics = []string{
-					"/armada/2.zenn/stations",
-					"/armada/1.marsara/ota",
-					"/armada/1.marsara/+",
-					"/armada/+/sys/facts",
-					"/armada/+/sys/#",
+					"armada/2.zenn/stations",
+					"armada/1.marsara/ota",
+					"armada/1.marsara/+",
+					"armada/+/sys/facts",
+					"armada/+/sys/#",
 				}
 			})
 			It("returns the matching topic", func() {
 				Expect(len(matches)).To(Equal(2))
-				Expect(matches[0]).To(Equal("/armada/+/sys/facts"))
-				Expect(matches[1]).To(Equal("/armada/+/sys/#"))
+				Expect(matches[0]).To(Equal("armada/+/sys/facts"))
+				Expect(matches[1]).To(Equal("armada/+/sys/#"))
 			})
 		})
 	})
 	Context("multiple subscribers", func() {
 		var sub1, sub2 *testutils.PubSubRecorder
-		var topic = "/foo/bar"
+		var topic = "foo/bar"
 		var payload = "hi"
 
 		BeforeEach(func() {

@@ -147,8 +147,8 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 		formations: formations,
 	}
 
-	broker.Subscribe("/pylon/+/stargate/port", h.onPortsMessage)
-	broker.Subscribe("/pylon/+/stargate/systemimaged", h.onSystemImageMessage)
+	broker.Subscribe("pylon/+/stargate/port", h.onPortsMessage)
+	broker.Subscribe("pylon/+/stargate/systemimaged", h.onSystemImageMessage)
 	return h
 }
 
@@ -196,7 +196,7 @@ func (h *Handler) onPortsMessage(topic string, payload interface{}) error {
 	}
 
 	h.formations.PutDeviceState(h.formations.FormationID(deviceName), deviceName, Key, state)
-	h.broker.Publish(fmt.Sprintf("/matriarch/%s/stargate/ports", deviceName), state.Ports)
+	h.broker.Publish(fmt.Sprintf("matriarch/%s/stargate/ports", deviceName), state.Ports)
 	return nil
 }
 
@@ -266,6 +266,6 @@ func (h *Handler) onSystemImageMessage(topic string, payload interface{}) error 
 	}
 
 	h.formations.PutDeviceState(h.formations.FormationID(deviceName), deviceName, Key, state)
-	h.broker.Publish(fmt.Sprintf("/matriarch/%s/stargate/system_images", deviceName), state.SystemImages)
+	h.broker.Publish(fmt.Sprintf("matriarch/%s/stargate/system_images", deviceName), state.SystemImages)
 	return nil
 }

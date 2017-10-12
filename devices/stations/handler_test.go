@@ -28,7 +28,7 @@ var _ = Describe("Stations Handler", func() {
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 
-		broker.Subscribe("/matriarch/1.marsara/stations", recorder.Record)
+		broker.Subscribe("matriarch/1.marsara/stations", recorder.Record)
 		formations.AddDevice(deviceName, formationID)
 		stations.Register(broker, formations)
 	})
@@ -57,10 +57,10 @@ var _ = Describe("Stations Handler", func() {
 		var publishedSurveyMsg map[string]*stations.WifiSurvey
 
 		BeforeEach(func() {
-			topic = "/pylon/1.marsara/wifi/poll"
+			topic = "pylon/1.marsara/wifi/poll"
 			payload = deviceSurveyMsg
 			surveyRecorder = testutils.NewPubSubRecorder()
-			broker.Subscribe("/matriarch/1.marsara/wifi/survey", surveyRecorder.Record)
+			broker.Subscribe("matriarch/1.marsara/wifi/survey", surveyRecorder.Record)
 		})
 		JustBeforeEach(func() {
 			_, m := surveyRecorder.First()
@@ -90,7 +90,7 @@ var _ = Describe("Stations Handler", func() {
 		}`)
 
 		BeforeEach(func() {
-			topic = "/pylon/1.marsara/wifi/poll"
+			topic = "pylon/1.marsara/wifi/poll"
 			payload = stationsMsg
 		})
 		It("stores the parsed stations info in the formation state", func() {
@@ -125,7 +125,7 @@ var _ = Describe("Stations Handler", func() {
 		}`)
 
 		BeforeEach(func() {
-			topic = "/pylon/1.marsara/wifi/event"
+			topic = "pylon/1.marsara/wifi/event"
 			payload = assocMsg
 
 			state := formations.GetState(formationID, stations.Key)
@@ -146,7 +146,7 @@ var _ = Describe("Stations Handler", func() {
 		}`)
 
 		BeforeEach(func() {
-			topic = "/pylon/1.marsara/wifi/event"
+			topic = "pylon/1.marsara/wifi/event"
 			payload = assocMsg
 
 			state := &stations.State{
@@ -174,7 +174,7 @@ var _ = Describe("Stations Handler", func() {
 		}`)
 
 		BeforeEach(func() {
-			topic = "/pylon/1.marsara/things/discovery"
+			topic = "pylon/1.marsara/things/discovery"
 			payload = discoveryMsg
 			Expect(formations.GetState(formationID, stations.Key)).To(BeNil())
 		})
@@ -191,7 +191,7 @@ var _ = Describe("Stations Handler", func() {
 		})
 		Describe("subsequent 'net' messages", func() {
 			JustBeforeEach(func() {
-				broker.Publish("/pylon/1.marsara/net", []byte(`{
+				broker.Publish("pylon/1.marsara/net", []byte(`{
 					"mac": [
 						{"ip": "1.2.3.4", "mac": "12:12:12:12:12:12"}
 					]
@@ -217,7 +217,7 @@ var _ = Describe("Stations Handler", func() {
 			})
 		})
 	})
-	Describe("/sys/facts messages", func() {
+	Describe("sys/facts messages", func() {
 
 		var sysMsg = []byte(`{
 			"board": {
@@ -263,7 +263,7 @@ var _ = Describe("Stations Handler", func() {
 		}`)
 
 		BeforeEach(func() {
-			topic = "/pylon/1.marsara/sys/facts"
+			topic = "pylon/1.marsara/sys/facts"
 			payload = sysMsg
 			Expect(formations.GetDeviceState(deviceName, "cpu_ports")).To(BeNil())
 		})
@@ -301,7 +301,7 @@ var _ = Describe("Stations Handler", func() {
 
 			formations.PutState(formationID, stations.Key, state)
 
-			topic = "/pylon/1.marsara/net"
+			topic = "pylon/1.marsara/net"
 			payload = []byte(`{
 				"mac": [
 					{"mac": "aa:aa:aa:aa:aa:aa", "ip": "1.2.3.4"},
@@ -414,12 +414,12 @@ var _ = Describe("Stations Handler", func() {
 
 		BeforeEach(func() {
 			dhcpRecorder = testutils.NewPubSubRecorder()
-			broker.Subscribe("/matriarch/1.marsara/dhcp/leases", dhcpRecorder.Record)
+			broker.Subscribe("matriarch/1.marsara/dhcp/leases", dhcpRecorder.Record)
 
-			topic = "/pylon/1.marsara/odhcpd"
+			topic = "pylon/1.marsara/odhcpd"
 			payload = []byte("wlan0\n11:11:11:11:11:11\t192.168.1.100\t4711\tclient1\n22:22:22:22:22:22\t192.168.1.101\t1337\tclient2\nwlan1\n33:33:33:33:33:33\t192.168.1.102\t2342\tclient3\n")
 		})
-		It("publishes the dhcp information under /dhcp/leases", func() {
+		It("publishes the dhcp information under dhcp/leases", func() {
 			_, msg := dhcpRecorder.First()
 			Expect(msg).NotTo(BeNil())
 

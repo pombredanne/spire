@@ -79,12 +79,12 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker: broker, formations: formations}
 
-	broker.Subscribe("/pylon/+/wifi/poll", h.onWifiPollMessage)
-	broker.Subscribe("/pylon/+/wifi/event", h.onWifiEventMessage)
-	broker.Subscribe("/pylon/+/things/discovery", h.onThingsMessage)
-	broker.Subscribe("/pylon/+/net", h.onNetMessage)
-	broker.Subscribe("/pylon/+/sys/facts", h.onSysMessage)
-	broker.Subscribe("/pylon/+/odhcpd", h.onDHCPMessage)
+	broker.Subscribe("pylon/+/wifi/poll", h.onWifiPollMessage)
+	broker.Subscribe("pylon/+/wifi/event", h.onWifiEventMessage)
+	broker.Subscribe("pylon/+/things/discovery", h.onThingsMessage)
+	broker.Subscribe("pylon/+/net", h.onNetMessage)
+	broker.Subscribe("pylon/+/sys/facts", h.onSysMessage)
+	broker.Subscribe("pylon/+/odhcpd", h.onDHCPMessage)
 	return h
 }
 
@@ -106,7 +106,7 @@ func (h *Handler) onWifiPollMessage(topic string, payload interface{}) error {
 
 	h.formations.PutState(formationID, Key, state)
 
-	surveyTopic := fmt.Sprintf("/matriarch/%s/wifi/survey", deviceName)
+	surveyTopic := fmt.Sprintf("matriarch/%s/wifi/survey", deviceName)
 	h.broker.Publish(surveyTopic, surveyMsg)
 
 	h.publish(deviceName, state)
@@ -401,7 +401,7 @@ func (h *Handler) onDHCPMessage(topic string, payload interface{}) error {
 	}
 
 	deviceName := devices.ParseTopic(topic).DeviceName
-	h.broker.Publish(fmt.Sprintf("/matriarch/%s/dhcp/leases", deviceName), dhcpState)
+	h.broker.Publish(fmt.Sprintf("matriarch/%s/dhcp/leases", deviceName), dhcpState)
 	return nil
 }
 
@@ -445,7 +445,7 @@ func (h *Handler) publish(deviceName string, state *State) {
 		i++
 	}
 
-	h.broker.Publish(fmt.Sprintf("/matriarch/%s/stations", deviceName), msg)
+	h.broker.Publish(fmt.Sprintf("matriarch/%s/stations", deviceName), msg)
 }
 
 func unmarshalWifiPollMessage(payload interface{}) (*WifiPollMessage, error) {

@@ -50,7 +50,7 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker, formations}
 
-	broker.Subscribe("/pylon/+/wan/ping", h.onMessage)
+	broker.Subscribe("pylon/+/wan/ping", h.onMessage)
 	return h
 }
 
@@ -75,7 +75,7 @@ func (h *Handler) onMessage(topic string, payload interface{}) error {
 	newState := updatePingState(currentState, msg)
 	formationID := h.formations.FormationID(deviceName)
 	h.formations.PutDeviceState(formationID, deviceName, Key, newState)
-	h.broker.Publish(fmt.Sprintf("/armada/%s/wan/ping", deviceName), newState)
+	h.broker.Publish(fmt.Sprintf("armada/%s/wan/ping", deviceName), newState)
 	return nil
 }
 

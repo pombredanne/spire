@@ -17,7 +17,7 @@ var _ = Describe("OTA Message Handler", func() {
 
 	var formationID = "00000000-0000-0000-0000-000000000001"
 	var deviceName = "1.marsara"
-	var controlTopic = "/armada/1.marsara/ota"
+	var controlTopic = "armada/1.marsara/ota"
 
 	BeforeEach(func() {
 		broker = mqtt.NewBroker()
@@ -59,7 +59,7 @@ var _ = Describe("OTA Message Handler", func() {
 					"progress": 10
 				}`)
 
-			broker.Publish("/pylon/1.marsara/ota", payload)
+			broker.Publish("pylon/1.marsara/ota", payload)
 		})
 		It("updates device state", func() {
 			rawState := formations.GetDeviceState(deviceName, "ota")

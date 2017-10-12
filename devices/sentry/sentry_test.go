@@ -61,7 +61,7 @@ var _ = Describe("Sentry Message Handler", func() {
 	})
 	Describe("handling messages", func() {
 		var dynamo *dynamock
-		var topic = "/pylon/1.marsara/sentry/accept"
+		var topic = "pylon/1.marsara/sentry/accept"
 
 		BeforeEach(func() {
 			formations.PutDeviceState(formationID, deviceName, sentry.ForwardedIP, ipAddress)

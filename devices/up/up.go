@@ -50,7 +50,7 @@ func (h *Handler) onDisconnect(_ string, payload interface{}) error {
 }
 
 func (h *Handler) publishUpState(ctx context.Context, deviceName string) {
-	topic := fmt.Sprintf("/armada/%s/up", deviceName)
+	topic := fmt.Sprintf("armada/%s/up", deviceName)
 
 	msg := map[string]interface{}{
 		"state":     "up",

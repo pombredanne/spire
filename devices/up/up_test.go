@@ -17,7 +17,7 @@ var _ = Describe("Up Message Handler", func() {
 
 	var formationID = "00000000-0000-0000-0000-000000000001"
 	var deviceName = "1.marsara"
-	var upTopic = "/armada/1.marsara/up"
+	var upTopic = "armada/1.marsara/up"
 
 	BeforeEach(func() {
 		broker = mqtt.NewBroker()

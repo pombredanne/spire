@@ -15,10 +15,10 @@ import (
 )
 
 // ConnectTopic ...
-const ConnectTopic = "/spire/devices/connect"
+const ConnectTopic = "spire/devices/connect"
 
 // DisconnectTopic ...
-const DisconnectTopic = "/spire/devices/disconnect"
+const DisconnectTopic = "spire/devices/disconnect"
 
 // ConnectMessage ...
 type ConnectMessage struct {
@@ -57,8 +57,12 @@ type Topic struct {
 
 // ParseTopic ...
 func ParseTopic(topic string) Topic {
+	if strings.HasPrefix(topic, "/") {
+		topic = topic[1:]
+	}
+
 	parts := strings.SplitN(topic, "/", 4)
-	return Topic{parts[1], parts[2], "/" + parts[3]}
+	return Topic{parts[0], parts[1], parts[2]}
 }
 
 // HandleConnection ...
