@@ -79,12 +79,12 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker: broker, formations: formations}
 
-	broker.Subscribe("/pylon/#/wifi/poll", h.onWifiPollMessage)
-	broker.Subscribe("/pylon/#/wifi/event", h.onWifiEventMessage)
-	broker.Subscribe("/pylon/#/things/discovery", h.onThingsMessage)
-	broker.Subscribe("/pylon/#/net", h.onNetMessage)
-	broker.Subscribe("/pylon/#/sys/facts", h.onSysMessage)
-	broker.Subscribe("/pylon/#/odhcpd", h.onDHCPMessage)
+	broker.Subscribe("/pylon/+/wifi/poll", h.onWifiPollMessage)
+	broker.Subscribe("/pylon/+/wifi/event", h.onWifiEventMessage)
+	broker.Subscribe("/pylon/+/things/discovery", h.onThingsMessage)
+	broker.Subscribe("/pylon/+/net", h.onNetMessage)
+	broker.Subscribe("/pylon/+/sys/facts", h.onSysMessage)
+	broker.Subscribe("/pylon/+/odhcpd", h.onDHCPMessage)
 	return h
 }
 

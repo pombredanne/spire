@@ -197,13 +197,17 @@ func (b *Broker) get(topic string) []PublishHandler {
 	return subs
 }
 
+const singleLevelWildcard = "+"
+const multiLevelWildcard = "#"
+
 // parameters are the topics split on "/"
 // assumes that the topic in the first parameter does not contain wildcards
+// returns false for invalid topics (multi-level wildcards somewhere other than at the end)
 func topicsMatch(t1, t2 []string) bool {
 	l1 := len(t1)
 	l2 := len(t2)
 
-	if l1 != l2 && t2[l2-1] != "#" {
+	if l1 != l2 && t2[l2-1] != multiLevelWildcard {
 		return false
 	}
 
@@ -213,7 +217,16 @@ func topicsMatch(t1, t2 []string) bool {
 	}
 
 	for i := 0; i < l; i++ {
-		if t1[i] != t2[i] && t2[i] != "#" {
+		if t1[i] != t2[i] {
+
+			if t2[i] == singleLevelWildcard {
+				continue
+			}
+
+			if t2[i] == multiLevelWildcard {
+				return i+1 == len(t2)
+			}
+
 			return false
 		}
 	}

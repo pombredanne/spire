@@ -46,7 +46,7 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 	}
 
 	broker.Subscribe(devices.ConnectTopic, h.onConnect)
-	broker.Subscribe("/pylon/#/sentry/accept", h.onMessage)
+	broker.Subscribe("/pylon/+/sentry/accept", h.onMessage)
 	return h
 }
 

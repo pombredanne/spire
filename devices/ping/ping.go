@@ -9,6 +9,7 @@ import (
 	"github.com/superscale/spire/mqtt"
 )
 
+// Key ...
 const Key = "ping"
 
 // Stats ...
@@ -49,7 +50,7 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker, formations}
 
-	broker.Subscribe("/pylon/#/wan/ping", h.onMessage)
+	broker.Subscribe("/pylon/+/wan/ping", h.onMessage)
 	return h
 }
 

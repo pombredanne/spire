@@ -44,7 +44,7 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 
 	broker.Subscribe(devices.ConnectTopic, h.onConnect)
 	broker.Subscribe(devices.DisconnectTopic, h.onDisconnect)
-	broker.Subscribe("/pylon/#/ota", h.onMessage)
+	broker.Subscribe("/pylon/+/ota", h.onMessage)
 	return h
 }
 
