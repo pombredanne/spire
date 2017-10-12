@@ -214,4 +214,38 @@ var _ = Describe("Broker", func() {
 			Expect(msg).To(Equal(payload))
 		})
 	})
+	Describe("internal topics", func() {
+		var sub *testutils.PubSubRecorder
+		var internalTopic = "$SYS/foo/bar"
+		var regularTopic = "foo/bar"
+		var payload = "hi"
+
+		BeforeEach(func() {
+			sub = testutils.NewPubSubRecorder()
+
+			broker.Subscribe(internalTopic, sub.Record)
+			broker.Subscribe(regularTopic, sub.Record)
+
+			go broker.HandleConnection(brokerSession)
+
+			go func() {
+				conPkg := packets.NewControlPacket(packets.Connect).(*packets.ConnectPacket)
+				Expect(subscriberSession.Write(conPkg)).NotTo(HaveOccurred())
+
+				_, err := subscriberSession.Read()
+				Expect(err).NotTo(HaveOccurred())
+
+				subscriberSession.Publish(internalTopic, payload)
+				subscriberSession.Publish(regularTopic, payload)
+			}()
+		})
+		It("ignores messages published by clients to internal topics", func() {
+			Eventually(func() int {
+				return sub.Count()
+			}).Should(BeNumerically("==", 1))
+
+			topic, _ := sub.First()
+			Expect(topic).To(Equal(regularTopic))
+		})
+	})
 })

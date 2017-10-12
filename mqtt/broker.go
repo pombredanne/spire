@@ -49,7 +49,10 @@ func (b *Broker) HandleConnection(session *Session) {
 		case *packets.PingreqPacket:
 			err = session.SendPingresp()
 		case *packets.PublishPacket:
-			b.Publish(p.TopicName, p.Payload)
+			if !strings.HasPrefix(p.TopicName, "$SYS/") {
+				log.Println("IMMA PUBLISH THIS SHIT", p.TopicName)
+				b.Publish(p.TopicName, p.Payload)
+			}
 		case *packets.SubscribePacket:
 			b.SubscribeAll(p, session.Publish)
 			err = session.SendSuback(p.MessageID)

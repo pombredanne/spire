@@ -310,7 +310,7 @@ var _ = Describe("Stations Handler", func() {
 				],
 				"bridge": {
 					"macs": {
-						"public": "port no\tmac addr\t\tis local?\tageing timer\n  4\tbb:bb:bb:bb:bb:bb\tno\t\t   0.42\n  4\tcc:cc:cc:cc:cc:cc\tyes\t\t   1.51\n",
+						"public": "port no\tmac addr\t\tis local?\tageing timer\n  4\tbb:bb:bb:bb:bb:bb\tno\t\t   0.5\n  4\tcc:cc:cc:cc:cc:cc\tyes\t\t   1.51\n",
 						"private": "port no\tmac addr\t\tis local?\tageing timer\n  4\taa:aa:aa:aa:aa:aa\tno\t\t   0.02\n"
 					}
 				}
@@ -332,7 +332,7 @@ var _ = Describe("Stations Handler", func() {
 			Expect(s1["local"]).To(BeFalse())
 
 			s2 := state.Things["2.3.4.5"]
-			Expect(s2.Age).To(Equal(0.42))
+			Expect(s2.Age).To(Equal(0.5))
 			Expect(s2.Local).To(BeFalse())
 
 			s3 := state.LanStations["cc:cc:cc:cc:cc:cc"]
@@ -352,7 +352,7 @@ var _ = Describe("Stations Handler", func() {
 			Expect(s1["local"]).To(BeFalse())
 
 			s2 := publishedStationsMsg.Thing[0]
-			Expect(s2.Age).To(Equal(0.42))
+			Expect(s2.Age).To(Equal(0.5))
 			Expect(s2.Local).To(BeFalse())
 
 			s3 := publishedStationsMsg.Other[0]

@@ -15,10 +15,10 @@ import (
 )
 
 // ConnectTopic ...
-const ConnectTopic = "spire/devices/connect"
+const ConnectTopic = "$SYS/spire/devices/connect"
 
 // DisconnectTopic ...
-const DisconnectTopic = "spire/devices/disconnect"
+const DisconnectTopic = "$SYS/spire/devices/disconnect"
 
 // ConnectMessage ...
 type ConnectMessage struct {
