@@ -20,7 +20,7 @@ var _ = Describe("OTA Message Handler", func() {
 	var controlTopic = "armada/1.marsara/ota"
 
 	BeforeEach(func() {
-		broker = mqtt.NewBroker()
+		broker = mqtt.NewBroker(false)
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 

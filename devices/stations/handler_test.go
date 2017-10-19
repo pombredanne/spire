@@ -24,7 +24,7 @@ var _ = Describe("Stations Handler", func() {
 	var formationID = "00000000-0000-0000-0000-000000000001"
 
 	BeforeEach(func() {
-		broker = mqtt.NewBroker()
+		broker = mqtt.NewBroker(false)
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 
@@ -310,8 +310,8 @@ var _ = Describe("Stations Handler", func() {
 				],
 				"bridge": {
 					"macs": {
-						"public": "port no\tmac addr\t\tis local?\tageing timer\n  4\tbb:bb:bb:bb:bb:bb\tno\t\t   0.5\n  4\tcc:cc:cc:cc:cc:cc\tyes\t\t   1.51\n",
-						"private": "port no\tmac addr\t\tis local?\tageing timer\n  4\taa:aa:aa:aa:aa:aa\tno\t\t   0.02\n"
+						"public": "port no\tmac addr\t\tis local?\tageing timer\n  4\tbb:bb:bb:bb:bb:bb\tno\t\t   1.5\n  4\tcc:cc:cc:cc:cc:cc\tyes\t\t   1.51\n",
+						"private": "port no\tmac addr\t\tis local?\tageing timer\n  4\taa:aa:aa:aa:aa:aa\tno\t\t   1.02\n"
 					}
 				}
 			}`)
@@ -328,15 +328,18 @@ var _ = Describe("Stations Handler", func() {
 			state := formations.GetState(formationID, stations.Key).(*stations.State)
 
 			s1 := state.WifiStations["aa:aa:aa:aa:aa:aa"]
-			Expect(s1["age"]).To(Equal(0.02))
+			Expect(s1["age"]).To(BeNumerically(">", 0))
+			Expect(s1["age"]).To(BeNumerically("<", 2))
 			Expect(s1["local"]).To(BeFalse())
 
 			s2 := state.Things["2.3.4.5"]
-			Expect(s2.Age).To(Equal(0.5))
+			Expect(s2.Age).To(BeNumerically(">", 0))
+			Expect(s2.Age).To(BeNumerically("<", 2))
 			Expect(s2.Local).To(BeFalse())
 
 			s3 := state.LanStations["cc:cc:cc:cc:cc:cc"]
-			Expect(s3.Age).To(Equal(1.51))
+			Expect(s3.Age).To(BeNumerically(">", 0))
+			Expect(s3.Age).To(BeNumerically("<", 2))
 			Expect(s3.Local).To(BeTrue())
 		})
 		It("includes the lan station in the published stations message", func() {
@@ -348,15 +351,18 @@ var _ = Describe("Stations Handler", func() {
 		})
 		It("includes bridge info in the published stations message", func() {
 			s1 := publishedStationsMsg.Private[0]
-			Expect(s1["age"]).To(Equal(0.02))
+			Expect(s1["age"]).To(BeNumerically(">", 0))
+			Expect(s1["age"]).To(BeNumerically("<", 2))
 			Expect(s1["local"]).To(BeFalse())
 
 			s2 := publishedStationsMsg.Thing[0]
-			Expect(s2.Age).To(Equal(0.5))
+			Expect(s2.Age).To(BeNumerically(">", 0))
+			Expect(s2.Age).To(BeNumerically("<", 2))
 			Expect(s2.Local).To(BeFalse())
 
 			s3 := publishedStationsMsg.Other[0]
-			Expect(s3.Age).To(Equal(1.51))
+			Expect(s3.Age).To(BeNumerically(">", 0))
+			Expect(s3.Age).To(BeNumerically("<", 2))
 			Expect(s3.Local).To(BeTrue())
 		})
 		It("includes 'seen' in the published stations message", func() {

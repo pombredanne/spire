@@ -16,6 +16,7 @@ type Params struct {
 	LiberatorJWTToken     string        `env:"SPIRE_LIBERATOR_JWT_TOKEN,required"`
 	IdleConnectionTimeout time.Duration `env:"SPIRE_IDLE_CONNECTION_TIMEOUT"  envDefault:"30s"`
 	SentryDynamoDBTable   string        `env:"SPIRE_SENTRY_DYNAMODB_TABLE,required"`
+	SlashPrefixTopics     bool          `env:"SPIRE_SLASH_PREFIX_TOPICS"  envDefault:"true"`
 }
 
 // Config is the global handle for accessing runtime configuration

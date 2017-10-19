@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -18,12 +19,16 @@ type subscriberMap map[string][]PublishHandler
 type Broker struct {
 	l           sync.RWMutex
 	subscribers subscriberMap
+	topicPrefix bool
 }
 
 // NewBroker ...
-func NewBroker() *Broker {
+// If topicPrefix is true, Subscribe() and Publish() will add a leading slash to topics that
+// don't have one.
+func NewBroker(topicPrefix bool) *Broker {
 	return &Broker{
 		subscribers: make(subscriberMap),
+		topicPrefix: topicPrefix,
 	}
 }
 
@@ -50,7 +55,6 @@ func (b *Broker) HandleConnection(session *Session) {
 			err = session.SendPingresp()
 		case *packets.PublishPacket:
 			if !strings.HasPrefix(p.TopicName, "$SYS/") {
-				log.Println("IMMA PUBLISH THIS SHIT", p.TopicName)
 				b.Publish(p.TopicName, p.Payload)
 			}
 		case *packets.SubscribePacket:
@@ -75,6 +79,11 @@ func (b *Broker) HandleConnection(session *Session) {
 
 // Subscribe ...
 func (b *Broker) Subscribe(topic string, pubHandler PublishHandler) {
+	if len(topic) == 0 {
+		return
+	}
+	topic = b.normalizeTopic(topic)
+
 	b.l.Lock()
 	defer b.l.Unlock()
 
@@ -102,6 +111,11 @@ func (b *Broker) SubscribeAll(pkg *packets.SubscribePacket, ph PublishHandler) {
 
 // Unsubscribe ...
 func (b *Broker) Unsubscribe(topic string, ph PublishHandler) {
+	if len(topic) == 0 {
+		return
+	}
+	topic = b.normalizeTopic(topic)
+
 	b.l.Lock()
 	defer b.l.Unlock()
 
@@ -136,6 +150,11 @@ func (b *Broker) UnsubscribeAll(pkg *packets.UnsubscribePacket, ph PublishHandle
 
 // Publish ...
 func (b *Broker) Publish(topic string, message interface{}) {
+	if len(topic) == 0 {
+		return
+	}
+	topic = b.normalizeTopic(topic)
+
 	topics := MatchTopics(topic, b.topics())
 	if len(topics) == 0 {
 		return
@@ -234,6 +253,13 @@ func topicsMatch(t1, t2 []string) bool {
 		}
 	}
 	return true
+}
+
+func (b *Broker) normalizeTopic(topic string) string {
+	if b.topicPrefix && topic[0] != '/' {
+		return fmt.Sprintf("/%s", topic)
+	}
+	return topic
 }
 
 func indexOf(pubHandlers []PublishHandler, pubHandler PublishHandler) int {

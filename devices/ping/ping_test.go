@@ -24,7 +24,7 @@ var _ = Describe("Ping Message Handler", func() {
 	var payload []byte
 
 	BeforeEach(func() {
-		broker = mqtt.NewBroker()
+		broker = mqtt.NewBroker(false)
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 

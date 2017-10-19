@@ -38,7 +38,7 @@ var _ = Describe("Sentry Message Handler", func() {
 	var ipAddress = "23.23.23.23"
 
 	BeforeEach(func() {
-		broker = mqtt.NewBroker()
+		broker = mqtt.NewBroker(false)
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 

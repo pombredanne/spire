@@ -23,7 +23,7 @@ var _ = Describe("Device Message Handlers", func() {
 	var deviceName = "1.marsara"
 
 	BeforeEach(func() {
-		broker = mqtt.NewBroker()
+		broker = mqtt.NewBroker(false)
 		formations = devices.NewFormationMap()
 		devMsgHandler = devices.NewHandler(formations, broker)
 		deviceServer, deviceClient = testutils.Pipe()

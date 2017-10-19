@@ -18,7 +18,7 @@ var _ = Describe("Broker", func() {
 
 	BeforeEach(func() {
 		brokerSession, subscriberSession = testutils.Pipe()
-		broker = mqtt.NewBroker()
+		broker = mqtt.NewBroker(false)
 	})
 	Context("pingreq", func() {
 		var response packets.ControlPacket
@@ -90,6 +90,18 @@ var _ = Describe("Broker", func() {
 				Expect(pkg).To(BeNil())
 			})
 		})
+		Context("publish to a zero-length topic", func() {
+			var recorder *testutils.PubSubRecorder
+
+			BeforeEach(func() {
+				recorder = testutils.NewPubSubRecorder()
+				broker.Subscribe("", recorder.Record)
+				broker.Publish("", map[string]string{"foo": "bar"})
+			})
+			It("does not forward the message", func() {
+				Expect(recorder.Count()).To(BeZero())
+			})
+		})
 		Context("unsubscribe", func() {
 			BeforeEach(func() {
 				unsubPkg := packets.NewControlPacket(packets.Unsubscribe).(*packets.UnsubscribePacket)
@@ -109,6 +121,49 @@ var _ = Describe("Broker", func() {
 				pkg, err := subscriberSession.Read()
 				Expect(err).To(HaveOccurred())
 				Expect(pkg).To(BeNil())
+			})
+		})
+	})
+	Context("pub/sub with topicPrefix enabled", func() {
+		var subTopic, pubTopic string
+		var recorder *testutils.PubSubRecorder
+
+		JustBeforeEach(func() {
+			broker = mqtt.NewBroker(true)
+			recorder = testutils.NewPubSubRecorder()
+			broker.Subscribe(subTopic, recorder.Record)
+			broker.Publish(pubTopic, map[string]string{"foo": "bar"})
+		})
+		Context("subscribe without leading slash", func() {
+			BeforeEach(func() {
+				subTopic = "pylon/1.marsara/up"
+				pubTopic = "/pylon/1.marsara/up"
+			})
+			It("forwards the message", func() {
+				Expect(recorder.Count()).NotTo(BeZero())
+
+				topic, payload := recorder.First()
+				Expect(topic).To(Equal("/pylon/1.marsara/up"))
+
+				msg, ok := payload.(map[string]string)
+				Expect(ok).To(BeTrue())
+				Expect(msg["foo"]).To(Equal("bar"))
+			})
+		})
+		Context("publish without leading slash", func() {
+			BeforeEach(func() {
+				subTopic = "/pylon/1.marsara/up"
+				pubTopic = "pylon/1.marsara/up"
+			})
+			It("forwards the message", func() {
+				Expect(recorder.Count()).NotTo(BeZero())
+
+				topic, payload := recorder.First()
+				Expect(topic).To(Equal("/pylon/1.marsara/up"))
+
+				msg, ok := payload.(map[string]string)
+				Expect(ok).To(BeTrue())
+				Expect(msg["foo"]).To(Equal("bar"))
 			})
 		})
 	})

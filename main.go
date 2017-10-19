@@ -24,7 +24,7 @@ func main() {
 		})
 	}
 
-	broker := mqtt.NewBroker()
+	broker := mqtt.NewBroker(config.Config.SlashPrefixTopics)
 	formations := devices.NewFormationMap()
 	loadMessageHandlers(broker, formations)
 

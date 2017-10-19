@@ -20,7 +20,7 @@ var _ = Describe("Up Message Handler", func() {
 	var upTopic = "armada/1.marsara/up"
 
 	BeforeEach(func() {
-		broker = mqtt.NewBroker()
+		broker = mqtt.NewBroker(false)
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 

@@ -26,7 +26,7 @@ var _ = Describe("Stargate Message Handler", func() {
 	var deviceName = "1.marsara"
 
 	BeforeEach(func() {
-		broker = mqtt.NewBroker()
+		broker = mqtt.NewBroker(false)
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 
