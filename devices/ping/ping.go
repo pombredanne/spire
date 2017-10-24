@@ -76,7 +76,7 @@ func (h *Handler) HandleMessage(topic string, payload interface{}) error {
 	newState := updatePingState(currentState, msg)
 	formationID := h.formations.FormationID(deviceName)
 	h.formations.PutDeviceState(formationID, deviceName, Key, newState)
-	h.broker.Publish(fmt.Sprintf("armada/%s/wan/ping", deviceName), newState)
+	h.broker.Publish(fmt.Sprintf("matriarch/%s/wan/ping", deviceName), newState)
 	return nil
 }
 

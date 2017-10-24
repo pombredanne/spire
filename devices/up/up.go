@@ -58,7 +58,7 @@ func (h *Handler) onDisconnect(dm *devices.DisconnectMessage) error {
 }
 
 func (h *Handler) publishUpState(ctx context.Context, deviceName string) {
-	topic := fmt.Sprintf("armada/%s/up", deviceName)
+	topic := fmt.Sprintf("matriarch/%s/up", deviceName)
 
 	msg := map[string]interface{}{
 		"state":     "up",

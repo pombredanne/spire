@@ -20,7 +20,7 @@ var _ = Describe("Ping Message Handler", func() {
 
 	var deviceName = "1.marsara"
 	var deviceTopic = "pylon/1.marsara/wan/ping"
-	var controlTopic = "armada/1.marsara/wan/ping"
+	var uiTopic = "matriarch/1.marsara/wan/ping"
 	var payload []byte
 
 	BeforeEach(func() {
@@ -28,7 +28,7 @@ var _ = Describe("Ping Message Handler", func() {
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 
-		broker.Subscribe(controlTopic, recorder)
+		broker.Subscribe(uiTopic, recorder)
 		ping.Register(broker, formations)
 	})
 	Context("first ping message from this device", func() {
@@ -102,7 +102,7 @@ var _ = Describe("Ping Message Handler", func() {
 			Expect(recorder.Count()).To(BeNumerically("==", 1))
 
 			topic, raw := recorder.First()
-			Expect(topic).To(Equal(controlTopic))
+			Expect(topic).To(Equal(uiTopic))
 
 			m, ok := raw.(*ping.Message)
 			Expect(ok).To(BeTrue())
