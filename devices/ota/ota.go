@@ -38,69 +38,120 @@ type Handler struct {
 	formations *devices.FormationMap
 }
 
+const formationCacheKey = "ota"
+const stateTopicPath = "ota/state"
+const upgradeTopicPath = "ota/sysupgrade"
+const cancelTopicPath = "ota/cancel"
+
 // Register ...
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker, formations}
 
 	broker.Subscribe(devices.ConnectTopic.String(), h)
 	broker.Subscribe(devices.DisconnectTopic.String(), h)
-	broker.Subscribe("pylon/+/ota", h)
+	broker.Subscribe("pylon/+/"+stateTopicPath, h)
+	broker.Subscribe("armada/+/ota/#", h)
 	return h
 }
 
 // HandleMessage implements mqtt.Subscriber
 func (h *Handler) HandleMessage(topic string, message interface{}) error {
+	t := devices.ParseTopic(topic)
 
-	switch t := devices.ParseTopic(topic); t.Path {
-	case devices.ConnectTopic.Path:
+	if t.Path == devices.ConnectTopic.Path {
 		return h.onConnect(message.(*devices.ConnectMessage))
-	case devices.DisconnectTopic.Path:
-		return h.onDisconnect(message.(*devices.DisconnectMessage))
-	default:
-		buf, ok := message.([]byte)
-		if !ok {
-			return fmt.Errorf("[OTA] expected byte buffer, got this instead: %v", message)
-		}
-
-		msg := new(Message)
-		if err := json.Unmarshal(buf, msg); err != nil {
-			return err
-		}
-
-		return h.onMessage(t, msg)
 	}
+
+	if t.Path == devices.DisconnectTopic.Path {
+		return h.onDisconnect(message.(*devices.DisconnectMessage))
+	}
+
+	if t.Path == cancelTopicPath {
+		h.forwardAndUpdateState(t, message, Cancelled)
+		return nil
+	}
+
+	buf, ok := message.([]byte)
+	if !ok {
+		return fmt.Errorf("[OTA] expected byte buffer, got this instead: %v", message)
+	}
+
+	if t.Path == stateTopicPath {
+		return h.onStateMessage(t, buf)
+	}
+
+	if t.Path == upgradeTopicPath {
+		return h.onUpgradeMessage(t, buf)
+	}
+
+	return nil
 }
 
-func (h *Handler) onMessage(topic devices.Topic, msg *Message) error {
-	formationID := h.formations.FormationID(topic.DeviceName)
-	h.formations.PutDeviceState(formationID, topic.DeviceName, "ota", msg)
-	h.publish(topic.DeviceName, msg)
+func (h *Handler) onStateMessage(topic devices.Topic, buf []byte) error {
+	msg := new(Message)
+	if err := json.Unmarshal(buf, msg); err != nil {
+		return err
+	}
 
+	if msg.State != Downloading {
+		formationID := h.formations.FormationID(topic.DeviceName)
+		h.formations.PutDeviceState(formationID, topic.DeviceName, formationCacheKey, msg)
+	}
+
+	h.sendToUI(topic.DeviceName, msg)
+	return nil
+}
+
+func (h *Handler) onUpgradeMessage(topic devices.Topic, buf []byte) error {
+	msg := make(map[string]interface{})
+	if err := json.Unmarshal(buf, &msg); err != nil {
+		return err
+	}
+
+	if err := checkStrings(msg, "url", "sha256"); err != nil {
+		return err
+	}
+
+	h.forwardAndUpdateState(topic, buf, Downloading)
 	return nil
 }
 
 func (h *Handler) onConnect(cm *devices.ConnectMessage) error {
 	msg := &Message{State: Default}
-	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, "ota", msg)
-	h.publish(cm.DeviceName, msg)
-
+	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, formationCacheKey, msg)
+	h.sendToUI(cm.DeviceName, msg)
 	return nil
 }
 
 func (h *Handler) onDisconnect(dm *devices.DisconnectMessage) error {
-	rawState := h.formations.GetDeviceState(dm.DeviceName, "ota")
+	rawState := h.formations.GetDeviceState(dm.DeviceName, formationCacheKey)
 	state, ok := rawState.(*Message)
 
 	if ok && state.State == Downloading {
-		h.publish(dm.DeviceName, &Message{State: Error, Error: "connection to device lost during download"})
+		h.sendToUI(dm.DeviceName, &Message{State: Error, Error: "connection to device lost during download"})
 	}
 
 	return nil
 }
 
-func (h *Handler) publish(deviceName string, msg *Message) {
-	topic := fmt.Sprintf("armada/%s/ota", deviceName)
+func (h *Handler) sendToUI(deviceName string, msg *Message) {
+	topic := fmt.Sprintf("matriarch/%s/%s", deviceName, stateTopicPath)
 	h.broker.Publish(topic, msg)
+}
+
+func (h *Handler) sendToDevice(topic devices.Topic, msg interface{}) {
+	topic.Prefix = "pylon"
+	h.broker.Publish(topic.String(), msg)
+}
+
+func (h *Handler) forwardAndUpdateState(topic devices.Topic, message interface{}, state states) {
+	h.sendToDevice(topic, message)
+
+	formationID := h.formations.FormationID(topic.DeviceName)
+	stateMsg := &Message{State: state}
+
+	h.sendToUI(topic.DeviceName, stateMsg)
+	h.formations.PutDeviceState(formationID, topic.DeviceName, formationCacheKey, stateMsg)
 }
 
 func (s states) String() string {
@@ -157,6 +208,18 @@ func (s *Message) UnmarshalJSON(data []byte) error {
 		s.State = Cancelled
 	default:
 		s.State = Default
+	}
+
+	return nil
+}
+
+func checkStrings(m map[string]interface{}, keys ...string) error {
+	for _, key := range keys {
+		raw, exists := m[key]
+		_, isStr := raw.(string)
+		if !exists || !isStr {
+			return fmt.Errorf("[OTA] corrupt sysupgrade message: '%s' missing or not a string: %v", key, m)
+		}
 	}
 
 	return nil

@@ -87,11 +87,19 @@ func (s *Session) SendPingresp() error {
 	return s.Write(resp)
 }
 
-// HandleMessage serializes the message to JSON and sends a PUBLISH packet with QoS 0
+// HandleMessage serializes the message to JSON (unless it is a []byte)
+// and sends a PUBLISH packet with QoS 0
 func (s *Session) HandleMessage(topic string, message interface{}) error {
-	payload, err := json.Marshal(message)
-	if err != nil {
-		return err
+	var payload []byte
+	var ok bool
+	var err error
+
+	payload, ok = message.([]byte)
+	if !ok {
+		payload, err = json.Marshal(message)
+		if err != nil {
+			return err
+		}
 	}
 
 	p := packets.NewControlPacket(packets.Publish).(*packets.PublishPacket)
