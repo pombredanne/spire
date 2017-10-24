@@ -87,8 +87,8 @@ func (s *Session) SendPingresp() error {
 	return s.Write(resp)
 }
 
-// Publish serializes the message to JSON and sends a PUBLISH packet with QoS 0
-func (s *Session) Publish(topic string, message interface{}) error {
+// HandleMessage serializes the message to JSON and sends a PUBLISH packet with QoS 0
+func (s *Session) HandleMessage(topic string, message interface{}) error {
 	payload, err := json.Marshal(message)
 	if err != nil {
 		return err
@@ -117,5 +117,5 @@ func (s *Session) SendUnsuback(messageID uint16) error {
 }
 
 func (s *Session) deadline() time.Time {
-	return time.Now().Add(s.idleTimeout)
+	return time.Now().UTC().Add(s.idleTimeout)
 }

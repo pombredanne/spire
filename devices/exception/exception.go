@@ -25,11 +25,12 @@ type Handler struct {
 // Register ...
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{formations}
-	broker.Subscribe("pylon/+/exception", h.onMessage)
+	broker.Subscribe("pylon/+/exception", h)
 	return h
 }
 
-func (h *Handler) onMessage(topic string, payload interface{}) error {
+// HandleMessage ...
+func (h *Handler) HandleMessage(topic string, payload interface{}) error {
 	if len(config.Config.BugsnagKey) == 0 {
 		return errors.New("bugsnag API key not set")
 	}

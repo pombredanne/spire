@@ -31,8 +31,8 @@ var _ = Describe("Stargate Message Handler", func() {
 		recorder = testutils.NewPubSubRecorder()
 
 		stargate.Register(broker, formations)
-		broker.Subscribe(controlTopicPorts, recorder.Record)
-		broker.Subscribe(controlTopicSystemImages, recorder.Record)
+		broker.Subscribe(controlTopicPorts, recorder)
+		broker.Subscribe(controlTopicSystemImages, recorder)
 	})
 	Describe("handling port messages", func() {
 		var state *stargate.State

@@ -15,11 +15,12 @@ type Handler struct {
 // Register ...
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{formations: formations}
-	broker.Subscribe(devices.ConnectTopic, h.onConnect)
+	broker.Subscribe(devices.ConnectTopic.String(), h)
 	return h
 }
 
-func (h *Handler) onConnect(_ string, message interface{}) error {
+// HandleMessage ...
+func (h *Handler) HandleMessage(_ string, message interface{}) error {
 	cm := message.(*devices.ConnectMessage)
 	state := map[string]interface{}{"device_os": getDeviceOS(cm.DeviceInfo)}
 	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, "device_info", state)

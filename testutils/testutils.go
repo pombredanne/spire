@@ -30,10 +30,10 @@ func NewPubSubRecorder() *PubSubRecorder {
 	}
 }
 
-// Record ...
-func (r *PubSubRecorder) Record(topic string, message interface{}) error {
+// HandleMessage implements devices.Subscriber
+func (r *PubSubRecorder) HandleMessage(topic string, payload interface{}) error {
 	r.Topics = append(r.Topics, topic)
-	r.Messages = append(r.Messages, message)
+	r.Messages = append(r.Messages, payload)
 	return nil
 }
 

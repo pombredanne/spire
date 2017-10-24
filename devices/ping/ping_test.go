@@ -28,7 +28,7 @@ var _ = Describe("Ping Message Handler", func() {
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 
-		broker.Subscribe(controlTopic, recorder.Record)
+		broker.Subscribe(controlTopic, recorder)
 		ping.Register(broker, formations)
 	})
 	Context("first ping message from this device", func() {
@@ -38,7 +38,7 @@ var _ = Describe("Ping Message Handler", func() {
 			pingState := formations.GetDeviceState(deviceName, ping.Key)
 			Expect(pingState).To(BeNil())
 
-			firstPingTimestamp = time.Now().Add(-10 * time.Minute)
+			firstPingTimestamp = time.Now().UTC().Add(-10 * time.Minute)
 			payload = []byte(fmt.Sprintf(`
 				{
 					"version": 1,

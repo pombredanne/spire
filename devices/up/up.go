@@ -19,14 +19,24 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker, formations}
 
-	broker.Subscribe(devices.ConnectTopic, h.onConnect)
-	broker.Subscribe(devices.DisconnectTopic, h.onDisconnect)
+	broker.Subscribe(devices.ConnectTopic.String(), h)
+	broker.Subscribe(devices.DisconnectTopic.String(), h)
 	return h
 }
 
-func (h *Handler) onConnect(_ string, payload interface{}) error {
-	cm := payload.(*devices.ConnectMessage)
+// HandleMessage ...
+func (h *Handler) HandleMessage(topic string, message interface{}) error {
+	switch t := devices.ParseTopic(topic); t.Path {
+	case devices.ConnectTopic.Path:
+		return h.onConnect(message.(*devices.ConnectMessage))
+	case devices.DisconnectTopic.Path:
+		return h.onDisconnect(message.(*devices.DisconnectMessage))
+	default:
+		return nil
+	}
+}
 
+func (h *Handler) onConnect(cm *devices.ConnectMessage) error {
 	ctx, cancelFn := context.WithCancel(context.Background())
 	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, "cancelUpFn", cancelFn)
 
@@ -34,18 +44,16 @@ func (h *Handler) onConnect(_ string, payload interface{}) error {
 	return nil
 }
 
-func (h *Handler) onDisconnect(_ string, payload interface{}) error {
-	cm := payload.(*devices.DisconnectMessage)
-
-	r := h.formations.GetDeviceState(cm.DeviceName, "cancelUpFn")
+func (h *Handler) onDisconnect(dm *devices.DisconnectMessage) error {
+	r := h.formations.GetDeviceState(dm.DeviceName, "cancelUpFn")
 	cancelFn, ok := r.(context.CancelFunc)
 	if !ok {
-		return fmt.Errorf("cannot cancel goroutine that publishes 'up' state for device %s", cm.DeviceName)
+		return fmt.Errorf("cannot cancel goroutine that publishes 'up' state for device %s", dm.DeviceName)
 	}
 
 	cancelFn()
 
-	h.formations.DeleteDeviceState(cm.FormationID, cm.DeviceName, "cancelUpFn")
+	h.formations.DeleteDeviceState(dm.FormationID, dm.DeviceName, "cancelUpFn")
 	return nil
 }
 

@@ -10,10 +10,17 @@ import (
 	"github.com/eclipse/paho.mqtt.golang/packets"
 )
 
-// PublishHandler defines the function signature for pub/sub
-type PublishHandler func(topic string, message interface{}) error
+// InternalTopicPrefix Topics with this prefix are reserved for internal use.
+// Publish packets with these topics will be ignored.
+const InternalTopicPrefix = "$SYS"
 
-type subscriberMap map[string][]PublishHandler
+// Subscriber ...
+type Subscriber interface {
+	// HandleMessage ...
+	HandleMessage(topic string, message interface{}) error
+}
+
+type subscriberMap map[string][]Subscriber
 
 // Broker manages pub/sub
 type Broker struct {
@@ -46,7 +53,7 @@ func (b *Broker) HandleConnection(session *Session) {
 				log.Println(err)
 				session.Close()
 			}
-			b.Remove(session.Publish)
+			b.Remove(session)
 			return
 		}
 
@@ -54,17 +61,17 @@ func (b *Broker) HandleConnection(session *Session) {
 		case *packets.PingreqPacket:
 			err = session.SendPingresp()
 		case *packets.PublishPacket:
-			if !strings.HasPrefix(p.TopicName, "$SYS/") {
+			if !strings.HasPrefix(p.TopicName, InternalTopicPrefix+"/") {
 				b.Publish(p.TopicName, p.Payload)
 			}
 		case *packets.SubscribePacket:
-			b.SubscribeAll(p, session.Publish)
+			b.SubscribeAll(p, session)
 			err = session.SendSuback(p.MessageID)
 		case *packets.UnsubscribePacket:
-			b.UnsubscribeAll(p, session.Publish)
+			b.UnsubscribeAll(p, session)
 			err = session.SendUnsuback(p.MessageID)
 		default:
-			b.Remove(session.Publish)
+			b.Remove(session)
 			if err = session.Close(); err != nil {
 				log.Println(err)
 			}
@@ -78,7 +85,7 @@ func (b *Broker) HandleConnection(session *Session) {
 }
 
 // Subscribe ...
-func (b *Broker) Subscribe(topic string, pubHandler PublishHandler) {
+func (b *Broker) Subscribe(topic string, s Subscriber) {
 	if len(topic) == 0 {
 		return
 	}
@@ -89,28 +96,26 @@ func (b *Broker) Subscribe(topic string, pubHandler PublishHandler) {
 
 	subs, exists := b.subscribers[topic]
 	if !exists {
-		b.subscribers[topic] = []PublishHandler{pubHandler}
+		b.subscribers[topic] = []Subscriber{s}
 		return
 	}
 
-	for _, ph := range subs {
-		if &ph == &pubHandler {
-			return
-		}
-
-		b.subscribers[topic] = append(subs, pubHandler)
+	if indexOf(subs, s) != -1 {
+		return
 	}
+
+	b.subscribers[topic] = append(subs, s)
 }
 
 // SubscribeAll ...
-func (b *Broker) SubscribeAll(pkg *packets.SubscribePacket, ph PublishHandler) {
+func (b *Broker) SubscribeAll(pkg *packets.SubscribePacket, s Subscriber) {
 	for _, topic := range pkg.Topics {
-		b.Subscribe(topic, ph)
+		b.Subscribe(topic, s)
 	}
 }
 
 // Unsubscribe ...
-func (b *Broker) Unsubscribe(topic string, ph PublishHandler) {
+func (b *Broker) Unsubscribe(topic string, s Subscriber) {
 	if len(topic) == 0 {
 		return
 	}
@@ -124,7 +129,7 @@ func (b *Broker) Unsubscribe(topic string, ph PublishHandler) {
 		return
 	}
 
-	i := indexOf(subs, ph)
+	i := indexOf(subs, s)
 	if i < 0 {
 		return
 	}
@@ -142,9 +147,9 @@ func (b *Broker) Unsubscribe(topic string, ph PublishHandler) {
 }
 
 // UnsubscribeAll ...
-func (b *Broker) UnsubscribeAll(pkg *packets.UnsubscribePacket, ph PublishHandler) {
+func (b *Broker) UnsubscribeAll(pkg *packets.UnsubscribePacket, s Subscriber) {
 	for _, topic := range pkg.Topics {
-		b.Unsubscribe(topic, ph)
+		b.Unsubscribe(topic, s)
 	}
 }
 
@@ -160,14 +165,14 @@ func (b *Broker) Publish(topic string, message interface{}) {
 		return
 	}
 
-	handlers := []PublishHandler{}
+	subs := []Subscriber{}
 
 	for _, t := range topics {
-		handlers = append(handlers, b.get(t)...)
+		subs = append(subs, b.get(t)...)
 	}
 
-	for _, mh := range handlers {
-		err := mh(topic, message)
+	for _, s := range subs {
+		err := s.HandleMessage(topic, message)
 		if err != nil {
 			log.Println(err)
 		}
@@ -175,9 +180,9 @@ func (b *Broker) Publish(topic string, message interface{}) {
 }
 
 // Remove ...
-func (b *Broker) Remove(mh PublishHandler) {
+func (b *Broker) Remove(s Subscriber) {
 	for topic := range b.subscribers {
-		b.Unsubscribe(topic, mh)
+		b.Unsubscribe(topic, s)
 	}
 }
 
@@ -208,13 +213,13 @@ func (b *Broker) topics() []string {
 	return res
 }
 
-func (b *Broker) get(topic string) []PublishHandler {
+func (b *Broker) get(topic string) []Subscriber {
 	b.l.RLock()
 	defer b.l.RUnlock()
 
 	subs, exists := b.subscribers[topic]
 	if !exists {
-		return []PublishHandler{}
+		return []Subscriber{}
 	}
 	return subs
 }
@@ -262,9 +267,9 @@ func (b *Broker) normalizeTopic(topic string) string {
 	return topic
 }
 
-func indexOf(pubHandlers []PublishHandler, pubHandler PublishHandler) int {
-	for i, ph := range pubHandlers {
-		if &ph == &pubHandler {
+func indexOf(subscribers []Subscriber, s Subscriber) int {
+	for i, sub := range subscribers {
+		if sub == s {
 			return i
 		}
 	}

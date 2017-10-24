@@ -28,7 +28,7 @@ var _ = Describe("Stations Handler", func() {
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 
-		broker.Subscribe("matriarch/1.marsara/stations", recorder.Record)
+		broker.Subscribe("matriarch/1.marsara/stations", recorder)
 		formations.AddDevice(deviceName, formationID)
 		stations.Register(broker, formations)
 	})
@@ -60,7 +60,7 @@ var _ = Describe("Stations Handler", func() {
 			topic = "pylon/1.marsara/wifi/poll"
 			payload = deviceSurveyMsg
 			surveyRecorder = testutils.NewPubSubRecorder()
-			broker.Subscribe("matriarch/1.marsara/wifi/survey", surveyRecorder.Record)
+			broker.Subscribe("matriarch/1.marsara/wifi/survey", surveyRecorder)
 		})
 		JustBeforeEach(func() {
 			_, m := surveyRecorder.First()
@@ -356,13 +356,13 @@ var _ = Describe("Stations Handler", func() {
 			Expect(s1["local"]).To(BeFalse())
 
 			s2 := publishedStationsMsg.Thing[0]
-			Expect(s2.Age).To(BeNumerically(">", 0))
-			Expect(s2.Age).To(BeNumerically("<", 2))
+			Expect(s2.Age).To(BeNumerically(">", float64(0)))
+			Expect(s2.Age).To(BeNumerically("<", float64(2)))
 			Expect(s2.Local).To(BeFalse())
 
 			s3 := publishedStationsMsg.Other[0]
-			Expect(s3.Age).To(BeNumerically(">", 0))
-			Expect(s3.Age).To(BeNumerically("<", 2))
+			Expect(s3.Age).To(BeNumerically(">", float64(0)))
+			Expect(s3.Age).To(BeNumerically("<", float64(2)))
 			Expect(s3.Local).To(BeTrue())
 		})
 		It("includes 'seen' in the published stations message", func() {
@@ -384,7 +384,7 @@ var _ = Describe("Stations Handler", func() {
 		})
 		Context("things timeout", func() {
 			BeforeEach(func() {
-				state.Things["4.5.6.7"].LastUpdatedAt = time.Now().Add(-10 * time.Minute)
+				state.Things["4.5.6.7"].LastUpdatedAt = time.Now().UTC().Add(-10 * time.Minute)
 			})
 			It("removes timed out things before publishing", func() {
 				state := formations.GetState(formationID, stations.Key).(*stations.State)
@@ -401,7 +401,7 @@ var _ = Describe("Stations Handler", func() {
 		Context("lan stations timeout", func() {
 			BeforeEach(func() {
 				state.LanStations["ee:ee:ee:ee:ee:ee"] = &stations.LanStation{
-					LastUpdatedAt: time.Now().Add(-20 * time.Minute),
+					LastUpdatedAt: time.Now().UTC().Add(-20 * time.Minute),
 				}
 			})
 			It("removes timed out lan stations before publishing", func() {
@@ -420,7 +420,7 @@ var _ = Describe("Stations Handler", func() {
 
 		BeforeEach(func() {
 			dhcpRecorder = testutils.NewPubSubRecorder()
-			broker.Subscribe("matriarch/1.marsara/dhcp/leases", dhcpRecorder.Record)
+			broker.Subscribe("matriarch/1.marsara/dhcp/leases", dhcpRecorder)
 
 			topic = "pylon/1.marsara/odhcpd"
 			payload = []byte("wlan0\n11:11:11:11:11:11\t192.168.1.100\t4711\tclient1\n22:22:22:22:22:22\t192.168.1.101\t1337\tclient2\nwlan1\n33:33:33:33:33:33\t192.168.1.102\t2342\tclient3\n")

@@ -24,13 +24,13 @@ var _ = Describe("OTA Message Handler", func() {
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 
-		broker.Subscribe(controlTopic, recorder.Record)
+		broker.Subscribe(controlTopic, recorder)
 		ota.Register(broker, formations)
 	})
 	Describe("on connect", func() {
 		BeforeEach(func() {
 			m := &devices.ConnectMessage{FormationID: formationID, DeviceName: deviceName, DeviceInfo: nil}
-			broker.Publish(devices.ConnectTopic, m)
+			broker.Publish(devices.ConnectTopic.String(), m)
 		})
 		It("sets state to 'default'", func() {
 			rawState := formations.GetDeviceState(deviceName, "ota")
@@ -84,7 +84,7 @@ var _ = Describe("OTA Message Handler", func() {
 			formations.PutDeviceState(formationID, deviceName, "ota", om)
 
 			dm := &devices.DisconnectMessage{FormationID: formationID, DeviceName: deviceName}
-			broker.Publish(devices.DisconnectTopic, dm)
+			broker.Publish(devices.DisconnectTopic.String(), dm)
 		})
 		It("publishes an error message", func() {
 			Expect(recorder.Count()).To(BeNumerically("==", 1))

@@ -15,10 +15,10 @@ import (
 )
 
 // ConnectTopic ...
-const ConnectTopic = "$SYS/spire/devices/connect"
+var ConnectTopic = Topic{Prefix: mqtt.InternalTopicPrefix, Path: "spire/devices/connect"}
 
 // DisconnectTopic ...
-const DisconnectTopic = "$SYS/spire/devices/disconnect"
+var DisconnectTopic = Topic{Prefix: mqtt.InternalTopicPrefix, Path: "spire/devices/disconnect"}
 
 // ConnectMessage ...
 type ConnectMessage struct {
@@ -55,13 +55,32 @@ type Topic struct {
 	Path       string
 }
 
+func (t Topic) String() string {
+	parts := []string{t.Prefix}
+
+	if len(t.DeviceName) > 0 {
+		parts = append(parts, t.DeviceName)
+	}
+
+	if len(t.Path) > 0 {
+		parts = append(parts, t.Path)
+	}
+
+	return strings.Join(parts, "/")
+}
+
 // ParseTopic ...
 func ParseTopic(topic string) Topic {
 	if strings.HasPrefix(topic, "/") {
 		topic = topic[1:]
 	}
 
-	parts := strings.SplitN(topic, "/", 4)
+	if strings.HasPrefix(topic, mqtt.InternalTopicPrefix) {
+		parts := strings.SplitN(topic, "/", 2)
+		return Topic{parts[0], "", parts[1]}
+	}
+
+	parts := strings.SplitN(topic, "/", 3)
 	return Topic{parts[0], parts[1], parts[2]}
 }
 
@@ -94,10 +113,10 @@ func (h *Handler) HandleConnection(session *mqtt.Session) {
 		case *packets.PublishPacket:
 			h.broker.Publish(ca.TopicName, ca.Payload)
 		case *packets.SubscribePacket:
-			h.broker.SubscribeAll(ca, session.Publish)
+			h.broker.SubscribeAll(ca, session)
 			err = session.SendSuback(ca.MessageID)
 		case *packets.UnsubscribePacket:
-			h.broker.UnsubscribeAll(ca, session.Publish)
+			h.broker.UnsubscribeAll(ca, session)
 			err = session.SendUnsuback(ca.MessageID)
 		case *packets.DisconnectPacket:
 			h.deviceDisconnected(cm.FormationID, cm.DeviceName, session)
@@ -140,18 +159,18 @@ func (h *Handler) connect(session *mqtt.Session) (*ConnectMessage, error) {
 		return nil, err
 	}
 
-	h.broker.Publish(ConnectTopic, cm)
+	h.broker.Publish(ConnectTopic.String(), cm)
 	return cm, nil
 }
 
 func (h *Handler) deviceDisconnected(formationID, deviceName string, session *mqtt.Session) {
-	h.broker.Remove(session.Publish)
+	h.broker.Remove(session)
 
 	if err := session.Close(); err != nil {
 		log.Println(err)
 	}
 
-	h.broker.Publish(DisconnectTopic, &DisconnectMessage{formationID, deviceName})
+	h.broker.Publish(DisconnectTopic.String(), &DisconnectMessage{formationID, deviceName})
 }
 
 func fetchDeviceInfo(deviceName string) (map[string]interface{}, error) {

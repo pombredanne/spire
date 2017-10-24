@@ -79,48 +79,80 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker: broker, formations: formations}
 
-	broker.Subscribe("pylon/+/wifi/poll", h.onWifiPollMessage)
-	broker.Subscribe("pylon/+/wifi/event", h.onWifiEventMessage)
-	broker.Subscribe("pylon/+/things/discovery", h.onThingsMessage)
-	broker.Subscribe("pylon/+/net", h.onNetMessage)
-	broker.Subscribe("pylon/+/sys/facts", h.onSysMessage)
-	broker.Subscribe("pylon/+/odhcpd", h.onDHCPMessage)
+	broker.Subscribe("pylon/+/wifi/poll", h)
+	broker.Subscribe("pylon/+/wifi/event", h)
+	broker.Subscribe("pylon/+/things/discovery", h)
+	broker.Subscribe("pylon/+/net", h)
+	broker.Subscribe("pylon/+/sys/facts", h)
+	broker.Subscribe("pylon/+/odhcpd", h)
+
 	return h
 }
 
-func (h *Handler) onWifiPollMessage(topic string, payload interface{}) error {
-	msg, err := unmarshalWifiPollMessage(payload)
-	if err != nil {
-		return err
+// HandleMessage ...
+func (h *Handler) HandleMessage(topic string, message interface{}) error {
+	t := devices.ParseTopic(topic)
+
+	switch t.Path {
+	case "wifi/poll":
+		msg, err := unmarshalWifiPollMessage(message)
+		if err != nil {
+			return err
+		}
+		return h.onWifiPollMessage(t, msg)
+	case "wifi/event":
+		msg, err := unmarshalWifiEventMessage(message)
+		if err != nil {
+			return err
+		}
+		return h.onWifiEventMessage(t, msg)
+	case "things/discovery":
+		msg, err := unmarshalThingsMessage(message)
+		if err != nil {
+			return err
+		}
+		return h.onThingsMessage(t, msg)
+	case "net":
+		msg, err := unmarshalNetMessage(message)
+		if err != nil {
+			return err
+		}
+		return h.onNetMessage(t, msg)
+	case "sys/facts":
+		msg, err := unmarshalSysMessage(message)
+		if err != nil {
+			return err
+		}
+		return h.onSysMessage(t, msg)
+	case "odhcpd":
+		buf, ok := message.([]byte)
+		if !ok {
+			return fmt.Errorf("[stations] expected byte buffer, got this instead: %v", message)
+		}
+		return h.onDHCPMessage(t, buf)
+	default:
+		return nil
 	}
+}
 
-	surveyMsg, err := compileWifiSurveyMessage(msg)
-	if err != nil {
-		return err
-	}
-
-	deviceName := devices.ParseTopic(topic).DeviceName
-	state, formationID := h.getState(deviceName)
-
-	h.updateWifiStations(msg, state, deviceName)
-
+func (h *Handler) onWifiPollMessage(t devices.Topic, msg *WifiPollMessage) error {
+	state, formationID := h.getState(t.DeviceName)
+	h.updateWifiStations(msg, state, t.DeviceName)
 	h.formations.PutState(formationID, Key, state)
 
-	surveyTopic := fmt.Sprintf("matriarch/%s/wifi/survey", deviceName)
-	h.broker.Publish(surveyTopic, surveyMsg)
+	if surveyMsg, err := compileWifiSurveyMessage(msg); err != nil {
+		return err
+	} else if len(surveyMsg) > 0 {
+		surveyTopic := fmt.Sprintf("matriarch/%s/wifi/survey", t.DeviceName)
+		h.broker.Publish(surveyTopic, surveyMsg)
+	}
 
-	h.publish(deviceName, state)
+	h.publish(t.DeviceName, state)
 	return nil
 }
 
-func (h *Handler) onWifiEventMessage(topic string, payload interface{}) error {
-	msg, err := unmarshalWifiEventMessage(payload)
-	if err != nil {
-		return err
-	}
-
-	deviceName := devices.ParseTopic(topic).DeviceName
-	state, formationID := h.getState(deviceName)
+func (h *Handler) onWifiEventMessage(t devices.Topic, msg *WifiEventMessage) error {
+	state, formationID := h.getState(t.DeviceName)
 
 	if msg.Action == "assoc" {
 		state.WifiStations[msg.MAC] = WifiStation{"mac": msg.MAC}
@@ -129,7 +161,7 @@ func (h *Handler) onWifiEventMessage(topic string, payload interface{}) error {
 	}
 
 	h.formations.PutState(formationID, Key, state)
-	h.publish(deviceName, state)
+	h.publish(t.DeviceName, state)
 	return nil
 }
 
@@ -157,30 +189,24 @@ func (h *Handler) getState(deviceName string) (*State, string) {
 	return state, formationID
 }
 
-func (h *Handler) onThingsMessage(topic string, payload interface{}) error {
-	msg, err := unmarshalThingsMessage(payload)
-	if err != nil {
-		return err
-	}
-
+func (h *Handler) onThingsMessage(t devices.Topic, msg map[string]interface{}) error {
 	ip, ipOk := msg["address"].(string)
-	t, tOk := msg["thing"].(map[string]interface{})
+	thingData, tOk := msg["thing"].(map[string]interface{})
 	if !ipOk || !tOk {
 		return fmt.Errorf("[stations] got invalid things discovery message: %v", msg)
 	}
 
-	deviceName := devices.ParseTopic(topic).DeviceName
-	state, formationID := h.getState(deviceName)
+	state, formationID := h.getState(t.DeviceName)
 
 	thing, exists := state.Things[ip]
 	if exists {
-		thing.Thing = t
+		thing.Thing = thingData
 		thing.LastUpdatedAt = time.Now().UTC()
 	} else {
 		thing := &Thing{
 			IP:            ip,
 			LastUpdatedAt: time.Now().UTC(),
-			Thing:         t,
+			Thing:         thingData,
 			Mode:          "thing",
 		}
 
@@ -188,7 +214,7 @@ func (h *Handler) onThingsMessage(topic string, payload interface{}) error {
 	}
 
 	h.formations.PutState(formationID, Key, state)
-	h.publish(deviceName, state)
+	h.publish(t.DeviceName, state)
 	return nil
 }
 
@@ -208,14 +234,8 @@ type netMessage struct {
 	Switch string `json:"switch"`
 }
 
-func (h *Handler) onNetMessage(topic string, payload interface{}) error {
-	msg, err := unmarshalNetMessage(payload)
-	if err != nil {
-		return err
-	}
-
-	deviceName := devices.ParseTopic(topic).DeviceName
-	state, formationID := h.getState(deviceName)
+func (h *Handler) onNetMessage(t devices.Topic, msg *netMessage) error {
+	state, formationID := h.getState(t.DeviceName)
 	now := time.Now().UTC()
 
 	for _, e := range msg.MAC {
@@ -238,17 +258,17 @@ func (h *Handler) onNetMessage(topic string, payload interface{}) error {
 		}
 	}
 
-	if err := h.assignPorts(msg, deviceName, state); err != nil {
-		log.Printf("[stations] error while assigning ports from switch info for device %s: %v", deviceName, err)
+	if err := h.assignPorts(msg, t.DeviceName, state); err != nil {
+		log.Printf("[stations] error while assigning ports from switch info for device %s: %v", t.DeviceName, err)
 	}
 
-	if err := h.assignBridgeInfo(msg, deviceName, state); err != nil {
-		log.Printf("[stations] error while assigning bridge info for device %s: %v", deviceName, err)
+	if err := h.assignBridgeInfo(msg, t.DeviceName, state); err != nil {
+		log.Printf("[stations] error while assigning bridge info for device %s: %v", t.DeviceName, err)
 	}
 
 	h.removeTimedOutStations(state)
 	h.formations.PutState(formationID, Key, state)
-	h.publish(deviceName, state)
+	h.publish(t.DeviceName, state)
 	return nil
 }
 
@@ -371,12 +391,7 @@ type sysMessage struct {
 	} `json:"board"`
 }
 
-func (h *Handler) onSysMessage(topic string, payload interface{}) error {
-	msg, err := unmarshalSysMessage(payload)
-	if err != nil {
-		return err
-	}
-
+func (h *Handler) onSysMessage(t devices.Topic, msg *sysMessage) error {
 	cpuPorts := []string{}
 	for _, port := range msg.Board.Switch.Switch0.Ports {
 		if port.Device != nil {
@@ -384,24 +399,17 @@ func (h *Handler) onSysMessage(topic string, payload interface{}) error {
 		}
 	}
 
-	deviceName := devices.ParseTopic(topic).DeviceName
-	h.formations.PutDeviceState(h.formations.FormationID(deviceName), deviceName, "cpu_ports", cpuPorts)
+	h.formations.PutDeviceState(h.formations.FormationID(t.DeviceName), t.DeviceName, "cpu_ports", cpuPorts)
 	return nil
 }
 
-func (h *Handler) onDHCPMessage(topic string, payload interface{}) error {
-	buf, ok := payload.([]byte)
-	if !ok {
-		return fmt.Errorf("[stations] expected byte buffer, got this instead: %v", payload)
-	}
-
-	dhcpState, err := ParseDHCP(buf)
+func (h *Handler) onDHCPMessage(t devices.Topic, msg []byte) error {
+	dhcpState, err := ParseDHCP(msg)
 	if err != nil {
 		return err
 	}
 
-	deviceName := devices.ParseTopic(topic).DeviceName
-	h.broker.Publish(fmt.Sprintf("matriarch/%s/dhcp/leases", deviceName), dhcpState)
+	h.broker.Publish(fmt.Sprintf("matriarch/%s/dhcp/leases", t.DeviceName), dhcpState)
 	return nil
 }
 

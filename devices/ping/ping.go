@@ -50,11 +50,12 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker, formations}
 
-	broker.Subscribe("pylon/+/wan/ping", h.onMessage)
+	broker.Subscribe("pylon/+/wan/ping", h)
 	return h
 }
 
-func (h *Handler) onMessage(topic string, payload interface{}) error {
+// HandleMessage ...
+func (h *Handler) HandleMessage(topic string, payload interface{}) error {
 	buf, ok := payload.([]byte)
 	if !ok {
 		return fmt.Errorf("[ping] expected byte buffer, got this instead: %v", payload)

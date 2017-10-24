@@ -147,29 +147,40 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 		formations: formations,
 	}
 
-	broker.Subscribe("pylon/+/stargate/port", h.onPortsMessage)
-	broker.Subscribe("pylon/+/stargate/systemimaged", h.onSystemImageMessage)
+	broker.Subscribe("pylon/+/stargate/port", h)
+	broker.Subscribe("pylon/+/stargate/systemimaged", h)
 	return h
 }
 
-func (h *Handler) onPortsMessage(topic string, payload interface{}) error {
-	buf, ok := payload.([]byte)
-	if !ok {
-		return fmt.Errorf("[stargate] expected byte buffer, got this instead: %v", payload)
-	}
+// HandleMessage ...
+func (h *Handler) HandleMessage(topic string, message interface{}) error {
+	t := devices.ParseTopic(topic)
 
-	msg := new(PortsMessage)
-	if err := json.Unmarshal(buf, msg); err != nil {
-		return err
+	switch t.Path {
+	case "stargate/port":
+		msg, err := unmarshalPortsMessage(message)
+		if err != nil {
+			return err
+		}
+		return h.onPortsMessage(t, msg)
+	case "stargate/systemimaged":
+		msg, err := unmarshalSystemImageMessage(message)
+		if err != nil {
+			return err
+		}
+		return h.onSystemImageMessage(t, msg)
+	default:
+		return nil
 	}
+}
 
-	deviceName := devices.ParseTopic(topic).DeviceName
-	state := h.getState(deviceName)
+func (h *Handler) onPortsMessage(t devices.Topic, msg *PortsMessage) error {
+	state := h.getState(t.DeviceName)
 
 	if msg.Up != nil || (msg.TFTPD.Listening != nil && *msg.TFTPD.Listening == true) {
-		h.handleUp(deviceName, state, msg.Port)
+		h.handleUp(t.DeviceName, state, msg.Port)
 	} else {
-		ps := h.getPortState(state, deviceName, msg.Port)
+		ps := h.getPortState(state, t.DeviceName, msg.Port)
 
 		if msg.TFTPD.Request != nil && msg.TFTPD.Total != nil {
 			ps.File = *msg.TFTPD.Request
@@ -195,8 +206,8 @@ func (h *Handler) onPortsMessage(topic string, payload interface{}) error {
 		}
 	}
 
-	h.formations.PutDeviceState(h.formations.FormationID(deviceName), deviceName, Key, state)
-	h.broker.Publish(fmt.Sprintf("matriarch/%s/stargate/ports", deviceName), state.Ports)
+	h.formations.PutDeviceState(h.formations.FormationID(t.DeviceName), t.DeviceName, Key, state)
+	h.broker.Publish(fmt.Sprintf("matriarch/%s/stargate/ports", t.DeviceName), state.Ports)
 	return nil
 }
 
@@ -230,26 +241,15 @@ func (h *Handler) getPortState(state *State, deviceName string, port int) *PortS
 	return ps
 }
 
-func (h *Handler) onSystemImageMessage(topic string, payload interface{}) error {
-	buf, ok := payload.([]byte)
-	if !ok {
-		return fmt.Errorf("[stargate] expected byte buffer, got this instead: %v", payload)
-	}
-
-	msg := new(SystemImageMessage)
-	if err := json.Unmarshal(buf, msg); err != nil {
-		return err
-	}
-
-	deviceName := devices.ParseTopic(topic).DeviceName
-	state := h.getState(deviceName)
+func (h *Handler) onSystemImageMessage(t devices.Topic, msg *SystemImageMessage) error {
+	state := h.getState(t.DeviceName)
 
 	if msg.Download == API {
 		state.SystemImages[msg.ID] = NewSystemImageState(msg.ID, msg.Vendor, msg.Product)
 	} else {
 		imgState, exists := state.SystemImages[msg.ID]
 		if !exists {
-			return fmt.Errorf("missing system image state for image %s on device %s", msg.ID, deviceName)
+			return fmt.Errorf("missing system image state for image %s on device %s", msg.ID, t.DeviceName)
 		}
 
 		switch msg.Download {
@@ -265,7 +265,33 @@ func (h *Handler) onSystemImageMessage(topic string, payload interface{}) error 
 		}
 	}
 
-	h.formations.PutDeviceState(h.formations.FormationID(deviceName), deviceName, Key, state)
-	h.broker.Publish(fmt.Sprintf("matriarch/%s/stargate/system_images", deviceName), state.SystemImages)
+	h.formations.PutDeviceState(h.formations.FormationID(t.DeviceName), t.DeviceName, Key, state)
+	h.broker.Publish(fmt.Sprintf("matriarch/%s/stargate/system_images", t.DeviceName), state.SystemImages)
 	return nil
+}
+
+func unmarshalPortsMessage(message interface{}) (*PortsMessage, error) {
+	buf, ok := message.([]byte)
+	if !ok {
+		return nil, fmt.Errorf("[stargate] expected byte buffer, got this instead: %v", message)
+	}
+
+	msg := new(PortsMessage)
+	if err := json.Unmarshal(buf, msg); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+func unmarshalSystemImageMessage(message interface{}) (*SystemImageMessage, error) {
+	buf, ok := message.([]byte)
+	if !ok {
+		return nil, fmt.Errorf("[stargate] expected byte buffer, got this instead: %v", message)
+	}
+
+	msg := new(SystemImageMessage)
+	if err := json.Unmarshal(buf, msg); err != nil {
+		return nil, err
+	}
+	return msg, nil
 }

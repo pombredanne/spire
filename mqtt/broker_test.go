@@ -48,7 +48,7 @@ var _ = Describe("Broker", func() {
 			subPkg.Topics = []string{"pylon/1.marsara/up"}
 			subPkg.MessageID = 1337
 
-			broker.SubscribeAll(subPkg, brokerSession.Publish)
+			broker.SubscribeAll(subPkg, brokerSession)
 		})
 		AfterEach(func() {
 			brokerSession.Close()
@@ -95,7 +95,7 @@ var _ = Describe("Broker", func() {
 
 			BeforeEach(func() {
 				recorder = testutils.NewPubSubRecorder()
-				broker.Subscribe("", recorder.Record)
+				broker.Subscribe("", recorder)
 				broker.Publish("", map[string]string{"foo": "bar"})
 			})
 			It("does not forward the message", func() {
@@ -108,7 +108,7 @@ var _ = Describe("Broker", func() {
 				unsubPkg.Topics = []string{"pylon/1.marsara/up"}
 				unsubPkg.MessageID = 1338
 
-				broker.UnsubscribeAll(unsubPkg, brokerSession.Publish)
+				broker.UnsubscribeAll(unsubPkg, brokerSession)
 
 				broker.Publish("pylon/2.marsara/up", map[string]string{"foo": "bar"})
 
@@ -131,7 +131,7 @@ var _ = Describe("Broker", func() {
 		JustBeforeEach(func() {
 			broker = mqtt.NewBroker(true)
 			recorder = testutils.NewPubSubRecorder()
-			broker.Subscribe(subTopic, recorder.Record)
+			broker.Subscribe(subTopic, recorder)
 			broker.Publish(pubTopic, map[string]string{"foo": "bar"})
 		})
 		Context("subscribe without leading slash", func() {
@@ -246,8 +246,8 @@ var _ = Describe("Broker", func() {
 		BeforeEach(func() {
 			sub1, sub2 = testutils.NewPubSubRecorder(), testutils.NewPubSubRecorder()
 
-			broker.Subscribe(topic, sub1.Record)
-			broker.Subscribe(topic, sub2.Record)
+			broker.Subscribe(topic, sub1)
+			broker.Subscribe(topic, sub2)
 
 			broker.Publish(topic, payload)
 		})
@@ -271,15 +271,15 @@ var _ = Describe("Broker", func() {
 	})
 	Describe("internal topics", func() {
 		var sub *testutils.PubSubRecorder
-		var internalTopic = "$SYS/foo/bar"
+		var internalTopic = mqtt.InternalTopicPrefix + "/foo/bar"
 		var regularTopic = "foo/bar"
 		var payload = "hi"
 
 		BeforeEach(func() {
 			sub = testutils.NewPubSubRecorder()
 
-			broker.Subscribe(internalTopic, sub.Record)
-			broker.Subscribe(regularTopic, sub.Record)
+			broker.Subscribe(internalTopic, sub)
+			broker.Subscribe(regularTopic, sub)
 
 			go broker.HandleConnection(brokerSession)
 
@@ -290,8 +290,8 @@ var _ = Describe("Broker", func() {
 				_, err := subscriberSession.Read()
 				Expect(err).NotTo(HaveOccurred())
 
-				subscriberSession.Publish(internalTopic, payload)
-				subscriberSession.Publish(regularTopic, payload)
+				subscriberSession.HandleMessage(internalTopic, payload)
+				subscriberSession.HandleMessage(regularTopic, payload)
 			}()
 		})
 		It("ignores messages published by clients to internal topics", func() {

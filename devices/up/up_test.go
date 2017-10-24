@@ -24,13 +24,13 @@ var _ = Describe("Up Message Handler", func() {
 		formations = devices.NewFormationMap()
 		recorder = testutils.NewPubSubRecorder()
 
-		broker.Subscribe(upTopic, recorder.Record)
+		broker.Subscribe(upTopic, recorder)
 		up.Register(broker, formations)
 	})
 	Describe("connect", func() {
 		BeforeEach(func() {
 			m := &devices.ConnectMessage{FormationID: formationID, DeviceName: deviceName, DeviceInfo: nil}
-			broker.Publish(devices.ConnectTopic, m)
+			broker.Publish(devices.ConnectTopic.String(), m)
 		})
 		It("publishes an 'up' message for the device with state = \"up\"", func() {
 			Eventually(func() int {
@@ -53,7 +53,7 @@ var _ = Describe("Up Message Handler", func() {
 		Describe("disconnect", func() {
 			BeforeEach(func() {
 				m := &devices.DisconnectMessage{FormationID: formationID, DeviceName: deviceName}
-				broker.Publish(devices.DisconnectTopic, m)
+				broker.Publish(devices.DisconnectTopic.String(), m)
 			})
 			It("publishes an 'up' message for the device with state = \"down\"", func() {
 				Eventually(func() int {

@@ -42,33 +42,44 @@ type Handler struct {
 func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{} {
 	h := &Handler{broker, formations}
 
-	broker.Subscribe(devices.ConnectTopic, h.onConnect)
-	broker.Subscribe(devices.DisconnectTopic, h.onDisconnect)
-	broker.Subscribe("pylon/+/ota", h.onMessage)
+	broker.Subscribe(devices.ConnectTopic.String(), h)
+	broker.Subscribe(devices.DisconnectTopic.String(), h)
+	broker.Subscribe("pylon/+/ota", h)
 	return h
 }
 
-func (h *Handler) onMessage(topic string, payload interface{}) error {
-	buf, ok := payload.([]byte)
-	if !ok {
-		return fmt.Errorf("[OTA] expected byte buffer, got this instead: %v", payload)
-	}
+// HandleMessage implements mqtt.Subscriber
+func (h *Handler) HandleMessage(topic string, message interface{}) error {
 
-	msg := new(Message)
-	if err := json.Unmarshal(buf, msg); err != nil {
-		return err
-	}
+	switch t := devices.ParseTopic(topic); t.Path {
+	case devices.ConnectTopic.Path:
+		return h.onConnect(message.(*devices.ConnectMessage))
+	case devices.DisconnectTopic.Path:
+		return h.onDisconnect(message.(*devices.DisconnectMessage))
+	default:
+		buf, ok := message.([]byte)
+		if !ok {
+			return fmt.Errorf("[OTA] expected byte buffer, got this instead: %v", message)
+		}
 
-	deviceName := devices.ParseTopic(topic).DeviceName
-	formationID := h.formations.FormationID(deviceName)
-	h.formations.PutDeviceState(formationID, deviceName, "ota", msg)
-	h.publish(deviceName, msg)
+		msg := new(Message)
+		if err := json.Unmarshal(buf, msg); err != nil {
+			return err
+		}
+
+		return h.onMessage(t, msg)
+	}
+}
+
+func (h *Handler) onMessage(topic devices.Topic, msg *Message) error {
+	formationID := h.formations.FormationID(topic.DeviceName)
+	h.formations.PutDeviceState(formationID, topic.DeviceName, "ota", msg)
+	h.publish(topic.DeviceName, msg)
+
 	return nil
 }
 
-func (h *Handler) onConnect(_ string, payload interface{}) error {
-	cm := payload.(*devices.ConnectMessage)
-
+func (h *Handler) onConnect(cm *devices.ConnectMessage) error {
 	msg := &Message{State: Default}
 	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, "ota", msg)
 	h.publish(cm.DeviceName, msg)
@@ -76,9 +87,7 @@ func (h *Handler) onConnect(_ string, payload interface{}) error {
 	return nil
 }
 
-func (h *Handler) onDisconnect(_ string, payload interface{}) error {
-	dm := payload.(*devices.DisconnectMessage)
-
+func (h *Handler) onDisconnect(dm *devices.DisconnectMessage) error {
 	rawState := h.formations.GetDeviceState(dm.DeviceName, "ota")
 	state, ok := rawState.(*Message)
 

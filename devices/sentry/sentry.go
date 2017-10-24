@@ -45,30 +45,34 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 		dynamoDBClient: dynamodb.New(sess),
 	}
 
-	broker.Subscribe(devices.ConnectTopic, h.onConnect)
-	broker.Subscribe("pylon/+/sentry/accept", h.onMessage)
+	broker.Subscribe(devices.ConnectTopic.String(), h)
+	broker.Subscribe("pylon/+/sentry/accept", h)
 	return h
 }
 
-func (h *Handler) onConnect(topic string, payload interface{}) error {
-	cm := payload.(*devices.ConnectMessage)
-	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, ForwardedIP, cm.IPAddress)
-	return nil
+// HandleMessage ...
+func (h *Handler) HandleMessage(topic string, message interface{}) error {
+
+	switch t := devices.ParseTopic(topic); t.Path {
+	case devices.ConnectTopic.Path:
+		cm := message.(*devices.ConnectMessage)
+		h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, ForwardedIP, cm.IPAddress)
+		return nil
+	default:
+		buf, ok := message.([]byte)
+		if !ok {
+			return fmt.Errorf("[sentry] expected []byte, got this instead: %v", message)
+		}
+
+		m := new(Message)
+		if err := json.Unmarshal(buf, m); err != nil {
+			return err
+		}
+		return h.onMessage(t, m)
+	}
 }
 
-func (h *Handler) onMessage(topic string, payload interface{}) error {
-	t := devices.ParseTopic(topic)
-
-	buf, ok := payload.([]byte)
-	if !ok {
-		return fmt.Errorf("[sentry] expected []byte, got this instead: %v", payload)
-	}
-
-	var m Message
-	if err := json.Unmarshal(buf, &m); err != nil {
-		return err
-	}
-
+func (h *Handler) onMessage(t devices.Topic, m *Message) error {
 	ts := m.Timestamp.Unix()
 
 	item, err := dynamodbattribute.MarshalMap(map[string]interface{}{
