@@ -42,7 +42,9 @@ func NewBroker(topicPrefix bool) *Broker {
 // HandleConnection ...
 func (b *Broker) HandleConnection(session *Session) {
 	if _, err := session.Handshake(); err != nil {
-		log.Println(err)
+		if err != io.EOF {
+			log.Println(err)
+		}
 		return
 	}
 
