@@ -96,6 +96,10 @@ func (b *Broker) Subscribe(topic string, s Subscriber) {
 	b.l.Lock()
 	defer b.l.Unlock()
 
+	b.subscribe(topic, s)
+}
+
+func (b *Broker) subscribe(topic string, s Subscriber) {
 	subs, exists := b.subscribers[topic]
 	if !exists {
 		b.subscribers[topic] = []Subscriber{s}
@@ -111,8 +115,11 @@ func (b *Broker) Subscribe(topic string, s Subscriber) {
 
 // SubscribeAll ...
 func (b *Broker) SubscribeAll(pkg *packets.SubscribePacket, s Subscriber) {
+	b.l.Lock()
+	defer b.l.Unlock()
+
 	for _, topic := range pkg.Topics {
-		b.Subscribe(topic, s)
+		b.subscribe(topic, s)
 	}
 }
 
@@ -126,6 +133,10 @@ func (b *Broker) Unsubscribe(topic string, s Subscriber) {
 	b.l.Lock()
 	defer b.l.Unlock()
 
+	b.unsubscribe(topic, s)
+}
+
+func (b *Broker) unsubscribe(topic string, s Subscriber) {
 	subs, exists := b.subscribers[topic]
 	if !exists {
 		return
@@ -150,8 +161,11 @@ func (b *Broker) Unsubscribe(topic string, s Subscriber) {
 
 // UnsubscribeAll ...
 func (b *Broker) UnsubscribeAll(pkg *packets.UnsubscribePacket, s Subscriber) {
+	b.l.Lock()
+	defer b.l.Unlock()
+
 	for _, topic := range pkg.Topics {
-		b.Unsubscribe(topic, s)
+		b.unsubscribe(topic, s)
 	}
 }
 
@@ -161,6 +175,9 @@ func (b *Broker) Publish(topic string, message interface{}) {
 		return
 	}
 	topic = b.normalizeTopic(topic)
+
+	b.l.RLock()
+	defer b.l.RUnlock()
 
 	topics := MatchTopics(topic, b.topics())
 	if len(topics) == 0 {
@@ -183,8 +200,11 @@ func (b *Broker) Publish(topic string, message interface{}) {
 
 // Remove ...
 func (b *Broker) Remove(s Subscriber) {
+	b.l.Lock()
+	defer b.l.Unlock()
+
 	for topic := range b.subscribers {
-		b.Unsubscribe(topic, s)
+		b.unsubscribe(topic, s)
 	}
 }
 
@@ -202,9 +222,6 @@ func MatchTopics(topic string, topics []string) []string {
 }
 
 func (b *Broker) topics() []string {
-	b.l.RLock()
-	defer b.l.RUnlock()
-
 	i := 0
 	res := make([]string, len(b.subscribers))
 	for topic := range b.subscribers {
@@ -216,9 +233,6 @@ func (b *Broker) topics() []string {
 }
 
 func (b *Broker) get(topic string) []Subscriber {
-	b.l.RLock()
-	defer b.l.RUnlock()
-
 	subs, exists := b.subscribers[topic]
 	if !exists {
 		return []Subscriber{}
