@@ -46,7 +46,7 @@ var _ = Describe("Sentry Message Handler", func() {
 	})
 	Describe("connect", func() {
 		BeforeEach(func() {
-			m := &devices.ConnectMessage{
+			m := devices.ConnectMessage{
 				FormationID: formationID,
 				DeviceName:  deviceName,
 				DeviceInfo:  nil,
@@ -55,6 +55,9 @@ var _ = Describe("Sentry Message Handler", func() {
 			broker.Publish(devices.ConnectTopic.String(), m)
 		})
 		It("adds the ip address to the device state", func() {
+			formations.RLock()
+			defer formations.RUnlock()
+
 			ip := formations.GetDeviceState(deviceName, sentry.ForwardedIP)
 			Expect(ip).To(Equal(ipAddress))
 		})
@@ -64,7 +67,10 @@ var _ = Describe("Sentry Message Handler", func() {
 		var topic = "pylon/1.marsara/sentry/accept"
 
 		BeforeEach(func() {
+			formations.Lock()
 			formations.PutDeviceState(formationID, deviceName, sentry.ForwardedIP, ipAddress)
+			formations.Unlock()
+
 			dynamo = new(dynamock)
 			handler.SetDynamoDBClient(dynamo)
 

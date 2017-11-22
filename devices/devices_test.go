@@ -57,6 +57,9 @@ var _ = Describe("Device Message Handlers", func() {
 				var deviceInfoState interface{}
 
 				Eventually(func() interface{} {
+					formations.RLock()
+					defer formations.RUnlock()
+
 					deviceInfoState = formations.GetDeviceState(deviceName, "device_info")
 					return deviceInfoState
 				}).ShouldNot(BeNil())
@@ -79,7 +82,7 @@ var _ = Describe("Device Message Handlers", func() {
 				topic, raw := recorder.First()
 				Expect(topic).To(Equal(devices.ConnectTopic.String()))
 
-				cm, ok := raw.(*devices.ConnectMessage)
+				cm, ok := raw.(devices.ConnectMessage)
 				Expect(ok).To(BeTrue())
 
 				Expect(cm.FormationID).To(Equal(formationID))
@@ -109,7 +112,7 @@ var _ = Describe("Device Message Handlers", func() {
 				topic, raw := recorder.First()
 				Expect(topic).To(Equal(devices.DisconnectTopic.String()))
 
-				cm, ok := raw.(*devices.DisconnectMessage)
+				cm, ok := raw.(devices.DisconnectMessage)
 				Expect(ok).To(BeTrue())
 
 				Expect(cm.FormationID).To(Equal(formationID))
@@ -128,7 +131,7 @@ var _ = Describe("Device Message Handlers", func() {
 				topic, raw := recorder.First()
 				Expect(topic).To(Equal(devices.DisconnectTopic.String()))
 
-				cm, ok := raw.(*devices.DisconnectMessage)
+				cm, ok := raw.(devices.DisconnectMessage)
 				Expect(ok).To(BeTrue())
 
 				Expect(cm.FormationID).To(Equal(formationID))

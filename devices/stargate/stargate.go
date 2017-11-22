@@ -154,6 +154,9 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 
 // HandleMessage ...
 func (h *Handler) HandleMessage(topic string, message interface{}) error {
+	h.formations.Lock()
+	defer h.formations.Unlock()
+
 	t := devices.ParseTopic(topic)
 
 	switch t.Path {

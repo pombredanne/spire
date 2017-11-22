@@ -52,10 +52,12 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 
 // HandleMessage ...
 func (h *Handler) HandleMessage(topic string, message interface{}) error {
+	h.formations.Lock()
+	defer h.formations.Unlock()
 
 	switch t := devices.ParseTopic(topic); t.Path {
 	case devices.ConnectTopic.Path:
-		cm := message.(*devices.ConnectMessage)
+		cm := message.(devices.ConnectMessage)
 		h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, ForwardedIP, cm.IPAddress)
 		return nil
 	default:

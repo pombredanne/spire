@@ -140,8 +140,8 @@ func (h *Handler) connect(session *mqtt.Session) (*ConnectMessage, error) {
 		return nil, fmt.Errorf("error while reading packet: %v. closing connection", err)
 	}
 
-	cm := &ConnectMessage{DeviceName: pkg.ClientIdentifier}
-	if err := json.Unmarshal([]byte(pkg.Username), cm); err != nil {
+	cm := ConnectMessage{DeviceName: pkg.ClientIdentifier}
+	if err := json.Unmarshal([]byte(pkg.Username), &cm); err != nil {
 		return nil, err
 	}
 
@@ -154,13 +154,16 @@ func (h *Handler) connect(session *mqtt.Session) (*ConnectMessage, error) {
 		return nil, err
 	}
 
+	h.formations.Lock()
 	h.formations.AddDevice(cm.DeviceName, cm.FormationID)
+	h.formations.Unlock()
+
 	if err = session.AcknowledgeConnect(); err != nil {
 		return nil, err
 	}
 
 	h.broker.Publish(ConnectTopic.String(), cm)
-	return cm, nil
+	return &cm, nil
 }
 
 func (h *Handler) deviceDisconnected(formationID, deviceName string, session *mqtt.Session) {
@@ -170,7 +173,7 @@ func (h *Handler) deviceDisconnected(formationID, deviceName string, session *mq
 		log.Println(err)
 	}
 
-	h.broker.Publish(DisconnectTopic.String(), &DisconnectMessage{formationID, deviceName})
+	h.broker.Publish(DisconnectTopic.String(), DisconnectMessage{formationID, deviceName})
 }
 
 func fetchDeviceInfo(deviceName string) (map[string]interface{}, error) {

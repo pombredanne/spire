@@ -26,17 +26,20 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 
 // HandleMessage ...
 func (h *Handler) HandleMessage(topic string, message interface{}) error {
+	h.formations.Lock()
+	defer h.formations.Unlock()
+
 	switch t := devices.ParseTopic(topic); t.Path {
 	case devices.ConnectTopic.Path:
-		return h.onConnect(message.(*devices.ConnectMessage))
+		return h.onConnect(message.(devices.ConnectMessage))
 	case devices.DisconnectTopic.Path:
-		return h.onDisconnect(message.(*devices.DisconnectMessage))
+		return h.onDisconnect(message.(devices.DisconnectMessage))
 	default:
 		return nil
 	}
 }
 
-func (h *Handler) onConnect(cm *devices.ConnectMessage) error {
+func (h *Handler) onConnect(cm devices.ConnectMessage) error {
 	ctx, cancelFn := context.WithCancel(context.Background())
 	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, "cancelUpFn", cancelFn)
 
@@ -44,7 +47,7 @@ func (h *Handler) onConnect(cm *devices.ConnectMessage) error {
 	return nil
 }
 
-func (h *Handler) onDisconnect(dm *devices.DisconnectMessage) error {
+func (h *Handler) onDisconnect(dm devices.DisconnectMessage) error {
 	r := h.formations.GetDeviceState(dm.DeviceName, "cancelUpFn")
 	cancelFn, ok := r.(context.CancelFunc)
 	if !ok {

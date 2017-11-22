@@ -46,11 +46,15 @@ var _ = Describe("Stargate Message Handler", func() {
 			state = stargate.NewState()
 		})
 		JustBeforeEach(func() {
+			formations.Lock()
 			formations.PutDeviceState(formationID, deviceName, stargate.Key, state)
+			formations.Unlock()
 
 			broker.Publish(deviceTopicPorts, payload)
 
+			formations.RLock()
 			rawState := formations.GetDeviceState(deviceName, stargate.Key)
+			formations.RUnlock()
 			Expect(rawState).NotTo(BeNil())
 
 			var ok bool
@@ -212,7 +216,10 @@ var _ = Describe("Stargate Message Handler", func() {
 			state = stargate.NewState()
 		})
 		JustBeforeEach(func() {
+			formations.Lock()
 			formations.PutDeviceState(formationID, deviceName, stargate.Key, state)
+			formations.Unlock()
+
 			broker.Publish(deviceTopicSystemImages, payload)
 			Expect(recorder.Count()).To(BeNumerically("==", 1))
 

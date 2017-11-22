@@ -3,6 +3,7 @@ package testutils
 import (
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
@@ -20,6 +21,7 @@ func Pipe() (*mqtt.Session, *mqtt.Session) {
 type PubSubRecorder struct {
 	Topics   []string
 	Messages []interface{}
+	l        sync.RWMutex
 }
 
 // NewPubSubRecorder ...
@@ -30,8 +32,11 @@ func NewPubSubRecorder() *PubSubRecorder {
 	}
 }
 
-// HandleMessage implements devices.Subscriber
+// HandleMessage implements mqtt.Subscriber
 func (r *PubSubRecorder) HandleMessage(topic string, payload interface{}) error {
+	r.l.Lock()
+	defer r.l.Unlock()
+
 	r.Topics = append(r.Topics, topic)
 	r.Messages = append(r.Messages, payload)
 	return nil
@@ -39,11 +44,17 @@ func (r *PubSubRecorder) HandleMessage(topic string, payload interface{}) error 
 
 // Count ...
 func (r *PubSubRecorder) Count() int {
+	r.l.RLock()
+	defer r.l.RUnlock()
+
 	return len(r.Topics)
 }
 
 // Get ...
 func (r *PubSubRecorder) Get(i int) (string, interface{}) {
+	r.l.RLock()
+	defer r.l.RUnlock()
+
 	if i < len(r.Topics) && i < len(r.Messages) {
 		return r.Topics[i], r.Messages[i]
 	}

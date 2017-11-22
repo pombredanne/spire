@@ -33,10 +33,13 @@ var _ = Describe("OTA Message Handler", func() {
 	})
 	Describe("on connect", func() {
 		BeforeEach(func() {
-			m := &devices.ConnectMessage{FormationID: formationID, DeviceName: deviceName, DeviceInfo: nil}
+			m := devices.ConnectMessage{FormationID: formationID, DeviceName: deviceName, DeviceInfo: nil}
 			broker.Publish(devices.ConnectTopic.String(), m)
 		})
 		It("sets state to 'default'", func() {
+			formations.RLock()
+			defer formations.RUnlock()
+
 			rawState := formations.GetDeviceState(deviceName, "ota")
 			state, ok := rawState.(*ota.Message)
 			Expect(ok).To(BeTrue())
@@ -55,6 +58,9 @@ var _ = Describe("OTA Message Handler", func() {
 	})
 	Describe("handling device messages", func() {
 		BeforeEach(func() {
+			formations.Lock()
+			defer formations.Unlock()
+
 			formations.PutDeviceState(formationID, deviceName, "ota", &ota.Message{State: ota.Default})
 		})
 		JustBeforeEach(func() {
@@ -66,6 +72,9 @@ var _ = Describe("OTA Message Handler", func() {
 			broker.Publish(deviceTopic, payload)
 		})
 		It("updates device state", func() {
+			formations.RLock()
+			defer formations.RUnlock()
+
 			rawState := formations.GetDeviceState(deviceName, "ota")
 			state, ok := rawState.(*ota.Message)
 			Expect(ok).To(BeTrue())
@@ -103,6 +112,9 @@ var _ = Describe("OTA Message Handler", func() {
 				}`)
 			})
 			It("updates device state", func() {
+				formations.RLock()
+				defer formations.RUnlock()
+
 				rawState := formations.GetDeviceState(deviceName, "ota")
 				state, ok := rawState.(*ota.Message)
 				Expect(ok).To(BeTrue())
@@ -142,6 +154,9 @@ var _ = Describe("OTA Message Handler", func() {
 				payload = []byte("whatevs")
 			})
 			It("updates device state", func() {
+				formations.RLock()
+				defer formations.RUnlock()
+
 				rawState := formations.GetDeviceState(deviceName, "ota")
 				state, ok := rawState.(*ota.Message)
 				Expect(ok).To(BeTrue())
@@ -167,10 +182,12 @@ var _ = Describe("OTA Message Handler", func() {
 	})
 	Describe("on disconnect during download", func() {
 		BeforeEach(func() {
+			formations.Lock()
 			om := &ota.Message{State: ota.Downloading}
 			formations.PutDeviceState(formationID, deviceName, "ota", om)
+			formations.Unlock()
 
-			dm := &devices.DisconnectMessage{FormationID: formationID, DeviceName: deviceName}
+			dm := devices.DisconnectMessage{FormationID: formationID, DeviceName: deviceName}
 			broker.Publish(devices.DisconnectTopic.String(), dm)
 		})
 		It("publishes an error message to the UI", func() {

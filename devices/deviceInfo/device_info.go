@@ -21,7 +21,10 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 
 // HandleMessage ...
 func (h *Handler) HandleMessage(_ string, message interface{}) error {
-	cm := message.(*devices.ConnectMessage)
+	h.formations.Lock()
+	defer h.formations.Unlock()
+
+	cm := message.(devices.ConnectMessage)
 	state := map[string]interface{}{"device_os": getDeviceOS(cm.DeviceInfo)}
 	h.formations.PutDeviceState(cm.FormationID, cm.DeviceName, "device_info", state)
 	return nil

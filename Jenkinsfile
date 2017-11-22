@@ -1,6 +1,6 @@
 node  {
     sh("rm -f ~/.dockercfg")
- 
+
     def service = "spire"
     def image
 
@@ -17,7 +17,7 @@ node  {
         image = docker.build("haikoschol/${service}")
     }
     stage("Run Tests") {
-        image.run('', '"/go/bin/ginkgo" "-r" "-cover"')
+        image.run('', '"/go/bin/ginkgo" "-r" "-cover" "-race"')
     }
     if (env.BRANCH_NAME == "master") {
         stage("Publish Docker Image") {

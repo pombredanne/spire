@@ -49,6 +49,9 @@ func (h *Handler) HandleMessage(topic string, payload interface{}) error {
 	metadata := bugsnag.MetaData{}
 	metadata.Add("device", "hostname", t.DeviceName)
 
+	h.formations.RLock()
+	defer h.formations.RUnlock()
+
 	rawState := h.formations.GetDeviceState(t.DeviceName, "device_info")
 
 	if deviceInfo, ok := rawState.(map[string]interface{}); ok {

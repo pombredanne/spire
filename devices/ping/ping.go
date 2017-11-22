@@ -56,6 +56,9 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 
 // HandleMessage ...
 func (h *Handler) HandleMessage(topic string, payload interface{}) error {
+	h.formations.Lock()
+	defer h.formations.Unlock()
+
 	buf, ok := payload.([]byte)
 	if !ok {
 		return fmt.Errorf("[ping] expected byte buffer, got this instead: %v", payload)

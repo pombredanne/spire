@@ -94,6 +94,8 @@ var _ = Describe("Stations Handler", func() {
 			payload = stationsMsg
 		})
 		It("stores the parsed stations info in the formation state", func() {
+			formations.RLock()
+			defer formations.RUnlock()
 			stationsState, ok := formations.GetState(formationID, stations.Key).(*stations.State)
 			Expect(ok).To(BeTrue())
 
@@ -128,11 +130,16 @@ var _ = Describe("Stations Handler", func() {
 			topic = "pylon/1.marsara/wifi/event"
 			payload = assocMsg
 
+			formations.RLock()
+			defer formations.RUnlock()
 			state := formations.GetState(formationID, stations.Key)
 			Expect(state).To(BeNil())
 		})
 		It("adds the new station", func() {
+			formations.RLock()
+			defer formations.RUnlock()
 			stationsState, ok := formations.GetState(formationID, stations.Key).(*stations.State)
+
 			Expect(ok).To(BeTrue())
 			station, exists := stationsState.WifiStations["4C:7C:5F:FF:FF:FF"]
 			Expect(exists).To(BeTrue())
@@ -155,10 +162,16 @@ var _ = Describe("Stations Handler", func() {
 					"4C:7C:5F:FE:FE:FE": {"mac": "4C:7C:5F:FE:FE:FE", "mode": "public"},
 				},
 			}
+
+			formations.Lock()
+			defer formations.Unlock()
 			formations.PutState(formationID, stations.Key, state)
 		})
 		It("removes the station", func() {
+			formations.RLock()
+			defer formations.RUnlock()
 			stationsState, ok := formations.GetState(formationID, stations.Key).(*stations.State)
+
 			Expect(ok).To(BeTrue())
 			Expect(len(stationsState.WifiStations)).To(Equal(1))
 			_, exists := stationsState.WifiStations["4C:7C:5F:FF:FF:FF"]
@@ -176,9 +189,14 @@ var _ = Describe("Stations Handler", func() {
 		BeforeEach(func() {
 			topic = "pylon/1.marsara/things/discovery"
 			payload = discoveryMsg
+
+			formations.RLock()
+			defer formations.RUnlock()
 			Expect(formations.GetState(formationID, stations.Key)).To(BeNil())
 		})
 		It("adds the thing", func() {
+			formations.RLock()
+			defer formations.RUnlock()
 			stationsState, ok := formations.GetState(formationID, stations.Key).(*stations.State)
 			Expect(ok).To(BeTrue())
 
@@ -202,6 +220,8 @@ var _ = Describe("Stations Handler", func() {
 				publishedStationsMsg = m.(*stations.Message)
 			})
 			It("add the mac address of the thing", func() {
+				formations.RLock()
+				defer formations.RUnlock()
 				stationsState, ok := formations.GetState(formationID, stations.Key).(*stations.State)
 				Expect(ok).To(BeTrue())
 
@@ -299,6 +319,8 @@ var _ = Describe("Stations Handler", func() {
 				LastUpdatedAt: time.Now().UTC(),
 			}
 
+			formations.Lock()
+			defer formations.Unlock()
 			formations.PutState(formationID, stations.Key, state)
 
 			topic = "pylon/1.marsara/net"
@@ -317,6 +339,8 @@ var _ = Describe("Stations Handler", func() {
 			}`)
 		})
 		It("infers lan stations from arp information", func() {
+			formations.RLock()
+			defer formations.RUnlock()
 			state := formations.GetState(formationID, stations.Key).(*stations.State)
 
 			Expect(len(state.LanStations)).To(Equal(1))
@@ -325,6 +349,8 @@ var _ = Describe("Stations Handler", func() {
 			Expect(lanStation.IP).To(Equal("3.4.5.6"))
 		})
 		It("sets 'age' and 'local' from bridge info", func() {
+			formations.RLock()
+			defer formations.RUnlock()
 			state := formations.GetState(formationID, stations.Key).(*stations.State)
 
 			s1 := state.WifiStations["aa:aa:aa:aa:aa:aa"]
@@ -356,13 +382,13 @@ var _ = Describe("Stations Handler", func() {
 			Expect(s1["local"]).To(BeFalse())
 
 			s2 := publishedStationsMsg.Thing[0]
-			Expect(s2.Age).To(BeNumerically(">", float64(0)))
-			Expect(s2.Age).To(BeNumerically("<", float64(2)))
+			Expect(s2.Age).To(BeNumerically(">=", float64(0)))
+			Expect(s2.Age).To(BeNumerically("<=", float64(2)))
 			Expect(s2.Local).To(BeFalse())
 
 			s3 := publishedStationsMsg.Other[0]
-			Expect(s3.Age).To(BeNumerically(">", float64(0)))
-			Expect(s3.Age).To(BeNumerically("<", float64(2)))
+			Expect(s3.Age).To(BeNumerically(">=", float64(0)))
+			Expect(s3.Age).To(BeNumerically("<=", float64(2)))
 			Expect(s3.Local).To(BeTrue())
 		})
 		It("includes 'seen' in the published stations message", func() {
@@ -387,6 +413,8 @@ var _ = Describe("Stations Handler", func() {
 				state.Things["4.5.6.7"].LastUpdatedAt = time.Now().UTC().Add(-10 * time.Minute)
 			})
 			It("removes timed out things before publishing", func() {
+				formations.RLock()
+				defer formations.RUnlock()
 				state := formations.GetState(formationID, stations.Key).(*stations.State)
 				Expect(len(state.Things)).To(Equal(1))
 
@@ -405,6 +433,8 @@ var _ = Describe("Stations Handler", func() {
 				}
 			})
 			It("removes timed out lan stations before publishing", func() {
+				formations.RLock()
+				defer formations.RUnlock()
 				state := formations.GetState(formationID, stations.Key).(*stations.State)
 				_, exists := state.LanStations["ee:ee:ee:ee:ee:ee"]
 				Expect(exists).To(BeFalse())

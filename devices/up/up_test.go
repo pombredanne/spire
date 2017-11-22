@@ -29,7 +29,7 @@ var _ = Describe("Up Message Handler", func() {
 	})
 	Describe("connect", func() {
 		BeforeEach(func() {
-			m := &devices.ConnectMessage{FormationID: formationID, DeviceName: deviceName, DeviceInfo: nil}
+			m := devices.ConnectMessage{FormationID: formationID, DeviceName: deviceName, DeviceInfo: nil}
 			broker.Publish(devices.ConnectTopic.String(), m)
 		})
 		It("publishes an 'up' message for the device with state = \"up\"", func() {
@@ -52,7 +52,7 @@ var _ = Describe("Up Message Handler", func() {
 		})
 		Describe("disconnect", func() {
 			BeforeEach(func() {
-				m := &devices.DisconnectMessage{FormationID: formationID, DeviceName: deviceName}
+				m := devices.DisconnectMessage{FormationID: formationID, DeviceName: deviceName}
 				broker.Publish(devices.DisconnectTopic.String(), m)
 			})
 			It("publishes an 'up' message for the device with state = \"down\"", func() {

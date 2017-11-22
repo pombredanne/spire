@@ -27,17 +27,28 @@ func NewFormationMap() *FormationMap {
 	}
 }
 
-func (fm *FormationMap) get(formationID string) formationS {
+// Lock ...
+func (fm *FormationMap) Lock() {
+	fm.l.Lock()
+}
+
+// Unlock ...
+func (fm *FormationMap) Unlock() {
+	fm.l.Unlock()
+}
+
+// RLock ...
+func (fm *FormationMap) RLock() {
 	fm.l.RLock()
-	defer fm.l.RUnlock()
-	return fm.m[formationID]
+}
+
+// RUnlock ...
+func (fm *FormationMap) RUnlock() {
+	fm.l.RUnlock()
 }
 
 // PutState ...
 func (fm *FormationMap) PutState(formationID, key string, value interface{}) {
-	fm.l.Lock()
-	defer fm.l.Unlock()
-
 	formation, exists := fm.m[formationID]
 
 	if exists {
@@ -54,9 +65,6 @@ func (fm *FormationMap) PutState(formationID, key string, value interface{}) {
 
 // GetState ...
 func (fm *FormationMap) GetState(formationID, key string) interface{} {
-	fm.l.RLock()
-	defer fm.l.RUnlock()
-
 	formation, exists := fm.m[formationID]
 
 	if !exists {
@@ -68,9 +76,6 @@ func (fm *FormationMap) GetState(formationID, key string) interface{} {
 
 // PutDeviceState ...
 func (fm *FormationMap) PutDeviceState(formationID, deviceName, key string, value interface{}) {
-	fm.l.Lock()
-	defer fm.l.Unlock()
-
 	formation, fExists := fm.m[formationID]
 
 	if !fExists {
@@ -90,9 +95,6 @@ func (fm *FormationMap) PutDeviceState(formationID, deviceName, key string, valu
 
 // GetDeviceState ...
 func (fm *FormationMap) GetDeviceState(deviceName, key string) interface{} {
-	fm.l.RLock()
-	defer fm.l.RUnlock()
-
 	if formationID, exists := fm.d[deviceName]; exists {
 
 		if formation, exists := fm.m[formationID]; exists {
@@ -108,9 +110,6 @@ func (fm *FormationMap) GetDeviceState(deviceName, key string) interface{} {
 
 // DeleteDeviceState ...
 func (fm *FormationMap) DeleteDeviceState(formationID, deviceName, key string) {
-	fm.l.Lock()
-	defer fm.l.Unlock()
-
 	formation, fExists := fm.m[formationID]
 
 	if !fExists {
@@ -127,14 +126,10 @@ func (fm *FormationMap) DeleteDeviceState(formationID, deviceName, key string) {
 
 // FormationID returns the devices formation ID
 func (fm *FormationMap) FormationID(deviceName string) string {
-	fm.l.RLock()
-	defer fm.l.RUnlock()
 	return fm.d[deviceName]
 }
 
 // AddDevice ...
 func (fm *FormationMap) AddDevice(deviceName, formationID string) {
-	fm.l.Lock()
-	defer fm.l.Unlock()
 	fm.d[deviceName] = formationID
 }
