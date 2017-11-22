@@ -43,20 +43,49 @@ var _ = Describe("Broker", func() {
 		})
 	})
 	Context("subscribe", func() {
+		var sendSubscribeMessage bool
+
 		BeforeEach(func() {
+			sendSubscribeMessage = false
+		})
+		JustBeforeEach(func() {
 			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
 			subPkg.Topics = []string{"pylon/1.marsara/up"}
 			subPkg.MessageID = 1337
 
-			broker.SubscribeAll(subPkg, brokerSession)
+			go broker.HandleSubscribePacket(subPkg, brokerSession, sendSubscribeMessage)
+
+			// read suback to unblock above goroutine
+			_, err := subscriberSession.Read()
+			Expect(err).NotTo(HaveOccurred())
 		})
 		AfterEach(func() {
 			brokerSession.Close()
 		})
+		Describe("publishes a message announcing the new subscriber", func() {
+			var recorder *testutils.PubSubRecorder
+
+			BeforeEach(func() {
+				sendSubscribeMessage = true
+				recorder = testutils.NewPubSubRecorder()
+				broker.Subscribe(mqtt.SubscribeEventTopic, recorder)
+			})
+			It("includes the topics the client subscribed to", func() {
+				Eventually(func() int {
+					return recorder.Count()
+				}).Should(BeNumerically("==", 1))
+
+				topic, raw := recorder.First()
+				sm := raw.(mqtt.SubscribeMessage)
+
+				Expect(topic).To(Equal(mqtt.SubscribeEventTopic))
+				Expect(sm.Topics[0]).To(Equal("pylon/1.marsara/up"))
+			})
+		})
 		Context("publish", func() {
 			var pkg packets.ControlPacket
 
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				go broker.Publish("pylon/1.marsara/up", map[string]string{"foo": "bar"})
 
 				var err error
@@ -76,7 +105,7 @@ var _ = Describe("Broker", func() {
 			})
 		})
 		Context("publish to a non-matching topic", func() {
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				broker.Publish("pylon/2.korhal/up", map[string]string{"foo": "bar"})
 
 				go func() {
@@ -93,7 +122,7 @@ var _ = Describe("Broker", func() {
 		Context("publish to a zero-length topic", func() {
 			var recorder *testutils.PubSubRecorder
 
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				recorder = testutils.NewPubSubRecorder()
 				broker.Subscribe("", recorder)
 				broker.Publish("", map[string]string{"foo": "bar"})
@@ -103,7 +132,7 @@ var _ = Describe("Broker", func() {
 			})
 		})
 		Context("unsubscribe", func() {
-			BeforeEach(func() {
+			JustBeforeEach(func() {
 				unsubPkg := packets.NewControlPacket(packets.Unsubscribe).(*packets.UnsubscribePacket)
 				unsubPkg.Topics = []string{"pylon/1.marsara/up"}
 				unsubPkg.MessageID = 1338

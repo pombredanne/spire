@@ -1,6 +1,9 @@
 package up_test
 
 import (
+	"encoding/json"
+
+	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/devices"
@@ -71,6 +74,52 @@ var _ = Describe("Up Message Handler", func() {
 				Expect(ok).To(BeTrue())
 				_, ok = timestamp.(int64)
 				Expect(ok).To(BeTrue())
+			})
+		})
+	})
+	Describe("sends current state on subscribe", func() {
+		var brokerSession, subscriberSession *mqtt.Session
+		var payload map[string]interface{}
+
+		JustBeforeEach(func() {
+			brokerSession, subscriberSession = testutils.Pipe()
+
+			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
+			subPkg.Topics = []string{"matriarch/1.marsara/#"}
+			subPkg.MessageID = 1337
+
+			go broker.HandleSubscribePacket(subPkg, brokerSession, true)
+
+			// read suback packet
+			_, err := subscriberSession.Read()
+			Expect(err).NotTo(HaveOccurred())
+
+			p, err := subscriberSession.Read()
+			Expect(err).NotTo(HaveOccurred())
+
+			pubPkg, ok := p.(*packets.PublishPacket)
+			Expect(ok).To(BeTrue())
+			payload = make(map[string]interface{})
+			err = json.Unmarshal(pubPkg.Payload, &payload)
+			Expect(err).NotTo(HaveOccurred())
+		})
+		AfterEach(func() {
+			brokerSession.Close()
+			subscriberSession.Close()
+		})
+		Context("with no device state in the cache", func() {
+			It("publishes an 'up' message for the device with state = \"down\"", func() {
+				Expect(payload["state"]).To(Equal("down"))
+			})
+		})
+		Context("with device state in the cache", func() {
+			BeforeEach(func() {
+				formations.Lock()
+				defer formations.Unlock()
+				formations.PutDeviceState(formationID, deviceName, "cancelUpFn", func() {})
+			})
+			It("publishes an 'up' message for the device with state = \"up\"", func() {
+				Expect(payload["state"]).To(Equal("up"))
 			})
 		})
 	})

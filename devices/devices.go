@@ -113,8 +113,7 @@ func (h *Handler) HandleConnection(session *mqtt.Session) {
 		case *packets.PublishPacket:
 			h.broker.Publish(ca.TopicName, ca.Payload)
 		case *packets.SubscribePacket:
-			h.broker.SubscribeAll(ca, session)
-			err = session.SendSuback(ca.MessageID)
+			err = h.broker.HandleSubscribePacket(ca, session, false)
 		case *packets.UnsubscribePacket:
 			h.broker.UnsubscribeAll(ca, session)
 			err = session.SendUnsuback(ca.MessageID)

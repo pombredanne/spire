@@ -22,6 +22,15 @@ type Subscriber interface {
 
 type subscriberMap map[string][]Subscriber
 
+// SubscribeEventTopic is used by the broker to publish subscribe events on.
+const SubscribeEventTopic = InternalTopicPrefix + "/subscribe"
+
+// SubscribeMessage is the payload sent on SubscribeEventTopic when the broker
+// receives a subscribe packet.
+type SubscribeMessage struct {
+	Topics []string
+}
+
 // Broker manages pub/sub
 type Broker struct {
 	l           sync.RWMutex
@@ -67,8 +76,7 @@ func (b *Broker) HandleConnection(session *Session) {
 				b.Publish(p.TopicName, p.Payload)
 			}
 		case *packets.SubscribePacket:
-			b.SubscribeAll(p, session)
-			err = session.SendSuback(p.MessageID)
+			err = b.HandleSubscribePacket(p, session, true)
 		case *packets.UnsubscribePacket:
 			b.UnsubscribeAll(p, session)
 			err = session.SendUnsuback(p.MessageID)
@@ -113,14 +121,29 @@ func (b *Broker) subscribe(topic string, s Subscriber) {
 	b.subscribers[topic] = append(subs, s)
 }
 
-// SubscribeAll ...
-func (b *Broker) SubscribeAll(pkg *packets.SubscribePacket, s Subscriber) {
+// HandleSubscribePacket subscribes the peer to all topics included in the packet
+// and publishes a SubscribeMessage under SubscribeEventTopic if sendSubscribeMessage is true.
+func (b *Broker) HandleSubscribePacket(pkg *packets.SubscribePacket, session *Session, sendSubscribeMessage bool) error {
 	b.l.Lock()
-	defer b.l.Unlock()
 
 	for _, topic := range pkg.Topics {
-		b.subscribe(topic, s)
+		b.subscribe(topic, session)
 	}
+	if err := session.SendSuback(pkg.MessageID); err != nil {
+		for _, topic := range pkg.Topics {
+			b.unsubscribe(topic, session)
+		}
+		b.l.Unlock()
+		return err
+	}
+	b.l.Unlock()
+
+	if sendSubscribeMessage {
+		subscribeMessage := SubscribeMessage{Topics: make([]string, len(pkg.Topics))}
+		copy(subscribeMessage.Topics, pkg.Topics)
+		b.Publish(SubscribeEventTopic, subscribeMessage)
+	}
+	return nil
 }
 
 // Unsubscribe ...

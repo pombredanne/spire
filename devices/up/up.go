@@ -21,6 +21,7 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 
 	broker.Subscribe(devices.ConnectTopic.String(), h)
 	broker.Subscribe(devices.DisconnectTopic.String(), h)
+	broker.Subscribe(mqtt.SubscribeEventTopic, h)
 	return h
 }
 
@@ -29,14 +30,17 @@ func (h *Handler) HandleMessage(topic string, message interface{}) error {
 	h.formations.Lock()
 	defer h.formations.Unlock()
 
-	switch t := devices.ParseTopic(topic); t.Path {
-	case devices.ConnectTopic.Path:
+	t := devices.ParseTopic(topic)
+
+	if t.Path == devices.ConnectTopic.Path {
 		return h.onConnect(message.(devices.ConnectMessage))
-	case devices.DisconnectTopic.Path:
+	} else if t.Path == devices.DisconnectTopic.Path {
 		return h.onDisconnect(message.(devices.DisconnectMessage))
-	default:
-		return nil
+	} else if topic == mqtt.SubscribeEventTopic {
+		return h.onSubscribeEvent(message.(mqtt.SubscribeMessage))
 	}
+
+	return nil
 }
 
 func (h *Handler) onConnect(cm devices.ConnectMessage) error {
@@ -60,24 +64,47 @@ func (h *Handler) onDisconnect(dm devices.DisconnectMessage) error {
 	return nil
 }
 
-func (h *Handler) publishUpState(ctx context.Context, deviceName string) {
-	topic := fmt.Sprintf("matriarch/%s/up", deviceName)
+func (h *Handler) onSubscribeEvent(sm mqtt.SubscribeMessage) error {
 
-	msg := map[string]interface{}{
-		"state":     "up",
-		"timestamp": time.Now().UTC().Unix(),
+	for _, topic := range sm.Topics {
+		t := devices.ParseTopic(topic)
+
+		if t.DeviceName != "+" && (t.Path == "up" || t.Path == "#") {
+
+			if h.formations.GetDeviceState(t.DeviceName, "cancelUpFn") != nil {
+				h.publishUpMsg(t.DeviceName, upState)
+			} else {
+				h.publishUpMsg(t.DeviceName, downState)
+			}
+		}
 	}
+	return nil
+}
 
-	h.broker.Publish(topic, msg)
+func (h *Handler) publishUpState(ctx context.Context, deviceName string) {
+	h.publishUpMsg(deviceName, upState)
 
 	for {
 		select {
 		case <-ctx.Done():
-			msg["state"] = "down"
-			h.broker.Publish(topic, msg)
+			h.publishUpMsg(deviceName, downState)
 			return
 		case <-time.After(30 * time.Second):
-			h.broker.Publish(topic, msg)
+			h.publishUpMsg(deviceName, upState)
 		}
 	}
+}
+
+const upState = "up"
+const downState = "down"
+
+func (h *Handler) publishUpMsg(deviceName, state string) {
+	topic := fmt.Sprintf("matriarch/%s/up", deviceName)
+
+	msg := map[string]interface{}{
+		"state":     state,
+		"timestamp": time.Now().UTC().Unix(),
+	}
+
+	h.broker.Publish(topic, msg)
 }
