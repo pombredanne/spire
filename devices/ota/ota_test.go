@@ -3,6 +3,7 @@ package ota_test
 import (
 	"encoding/json"
 
+	"github.com/eclipse/paho.mqtt.golang/packets"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/superscale/spire/devices"
@@ -199,6 +200,54 @@ var _ = Describe("OTA Message Handler", func() {
 			msg, ok := raw.(*ota.Message)
 			Expect(ok).To(BeTrue())
 			Expect(msg.State).To(Equal(ota.Error))
+		})
+	})
+	Describe("sends current OTA state on subscribe", func() {
+		var brokerSession, subscriberSession *mqtt.Session
+		var payload map[string]interface{}
+
+		JustBeforeEach(func() {
+			brokerSession, subscriberSession = testutils.Pipe()
+
+			subPkg := packets.NewControlPacket(packets.Subscribe).(*packets.SubscribePacket)
+			subPkg.Topics = []string{"matriarch/1.marsara/#"}
+			subPkg.MessageID = 1337
+
+			go broker.HandleSubscribePacket(subPkg, brokerSession, true)
+
+			// read suback packet
+			_, err := subscriberSession.Read()
+			Expect(err).NotTo(HaveOccurred())
+
+			p, err := subscriberSession.Read()
+			Expect(err).NotTo(HaveOccurred())
+
+			pubPkg, ok := p.(*packets.PublishPacket)
+			Expect(ok).To(BeTrue())
+			payload = make(map[string]interface{})
+			err = json.Unmarshal(pubPkg.Payload, &payload)
+			Expect(err).NotTo(HaveOccurred())
+		})
+		AfterEach(func() {
+			brokerSession.Close()
+			subscriberSession.Close()
+		})
+		Context("with no device state in the cache", func() {
+			It("publishes an OTA message for the device with \"default\" state", func() {
+				Expect(payload["state"]).To(Equal("default"))
+			})
+		})
+		Context("with device state in the cache", func() {
+			BeforeEach(func() {
+				formations.Lock()
+				defer formations.Unlock()
+
+				stateMsg := &ota.Message{State: ota.Downloading, Progress: 42}
+				formations.PutDeviceState(formationID, deviceName, "ota", stateMsg)
+			})
+			It("publishes an OTA message for the device with \"downloading\" state", func() {
+				Expect(payload["state"]).To(Equal("downloading"))
+			})
 		})
 	})
 })

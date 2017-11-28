@@ -51,6 +51,7 @@ func Register(broker *mqtt.Broker, formations *devices.FormationMap) interface{}
 	broker.Subscribe(devices.DisconnectTopic.String(), h)
 	broker.Subscribe("pylon/+/"+stateTopicPath, h)
 	broker.Subscribe("armada/+/ota/#", h)
+	broker.Subscribe(mqtt.SubscribeEventTopic, h)
 	return h
 }
 
@@ -72,6 +73,10 @@ func (h *Handler) HandleMessage(topic string, message interface{}) error {
 	if t.Path == cancelTopicPath {
 		h.forwardAndUpdateState(t, message, Cancelled)
 		return nil
+	}
+
+	if topic == mqtt.SubscribeEventTopic {
+		return h.onSubscribeEvent(message.(mqtt.SubscribeMessage))
 	}
 
 	buf, ok := message.([]byte)
@@ -137,7 +142,24 @@ func (h *Handler) onDisconnect(dm devices.DisconnectMessage) error {
 	return nil
 }
 
+func (h *Handler) onSubscribeEvent(sm mqtt.SubscribeMessage) error {
+
+	for _, topic := range sm.Topics {
+		t := devices.ParseTopic(topic)
+
+		if t.DeviceName != "+" && (t.Path == stateTopicPath || t.Path == "#") {
+			state, _ := h.formations.GetDeviceState(t.DeviceName, formationCacheKey).(*Message)
+			h.sendToUI(t.DeviceName, state)
+		}
+	}
+	return nil
+}
+
 func (h *Handler) sendToUI(deviceName string, msg *Message) {
+	if msg == nil {
+		msg = &Message{State: Default}
+	}
+
 	topic := fmt.Sprintf("matriarch/%s/%s", deviceName, stateTopicPath)
 	h.broker.Publish(topic, msg)
 }
